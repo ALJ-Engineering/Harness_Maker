@@ -1,7 +1,8 @@
-import { copyFile, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'fs/promises'
+import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'fs/promises'
 import { basename, extname, join, resolve, sep } from 'path'
 import { LIBRARY_SUBDIRS } from './settings'
 import { readHeader } from './partsImages'
+import { renameWithRetry } from './renameRetry'
 import { sanitisePartNumber } from '../shared/parts/images'
 import { parseLibraryPart, serializeLibraryPart, type LibraryPart } from '../shared/parts/librarySchema'
 
@@ -111,7 +112,7 @@ export async function writePart(dir: string, part: LibraryPart): Promise<void> {
   }
   const tmp = `${target}.${process.pid}.tmp`
   await writeFile(tmp, serializeLibraryPart(r.part), 'utf-8')
-  await rename(tmp, target)
+  await renameWithRetry(tmp, target)
 }
 
 export async function deletePart(dir: string, partNumber: string, withFiles: boolean): Promise<boolean> {
@@ -160,7 +161,7 @@ export async function importDatasheet(
   const target = join(dsDir, `${stemOf(partNumber)}.pdf`)
   const tmp = `${target}.${process.pid}.tmp`
   await copyFile(srcPath, tmp)
-  await rename(tmp, target)
+  await renameWithRetry(tmp, target)
 }
 
 export async function removeDatasheet(dir: string, partNumber: string): Promise<boolean> {

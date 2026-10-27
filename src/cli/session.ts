@@ -1,9 +1,10 @@
-import { readFile, writeFile, rename, rm } from 'fs/promises'
+import { readFile, writeFile, rm } from 'fs/promises'
 import type { HarnessDocument } from '@shared/model/schema'
 import { parseDocument, parseDocumentWithNotes, serializeDocument } from '@shared/model/serialize'
 import { reconcileDocument, type Repair } from '@shared/model/reconcile'
 import { LibraryCatalog } from '@shared/parts/catalog'
 import { listParts } from '../main/partsLibrary'
+import { renameWithRetry } from '../main/renameRetry'
 
 /** Parse + reconcile, exactly as the editor's `loadFromText` does (copied, not imported). */
 export async function loadHarness(
@@ -25,7 +26,7 @@ export async function saveHarness(path: string, doc: HarnessDocument): Promise<v
   const tmp = `${path}.${process.pid}.tmp`
   try {
     await writeFile(tmp, text, 'utf8')
-    await rename(tmp, path)
+    await renameWithRetry(tmp, path)
   } catch (e) {
     await rm(tmp, { force: true })
     throw e
