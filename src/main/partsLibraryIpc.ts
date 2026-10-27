@@ -18,7 +18,7 @@ import type { LibraryPart } from '../shared/parts/librarySchema'
  * without Electron lives in `partsLibrary.ts`.
  */
 
-function broadcast(channel: 'settings:changed' | 'library:changed'): void {
+export function broadcast(channel: 'settings:changed' | 'library:changed'): void {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel)
 }
 

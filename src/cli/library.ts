@@ -118,20 +118,27 @@ async function recordFileIn(dir: string, stem: string): Promise<{ path: string }
   return { path }
 }
 
-export async function libraryPut(
-  dir: string,
-  recordPath: string,
-  opts: { datasheet?: string; fetchImpl?: FetchLike; timeoutMs?: number } = {}
-): Promise<PutResult> {
-  const fail = (problems: string[], partNumber?: string): PutResult => ({ ok: false, partNumber, problems })
+type PutOpts = { datasheet?: string; fetchImpl?: FetchLike; timeoutMs?: number }
+
+const fail = (problems: string[], partNumber?: string): PutResult => ({ ok: false, partNumber, problems })
+
+export async function libraryPut(dir: string, recordPath: string, opts: PutOpts = {}): Promise<PutResult> {
   let text: string
   try {
     text = await readFile(recordPath, 'utf8')
   } catch (e) {
     return fail([`${recordPath}: ${(e as Error).message}`])
   }
+  return libraryPutText(dir, text, recordPath, opts)
+}
+
+/**
+ * `libraryPut` with the record's JSON already in hand (the app's MCP `library_put`);
+ * `source` names it in a parse problem, as the record file's path does for the CLI.
+ */
+export async function libraryPutText(dir: string, text: string, source: string, opts: PutOpts = {}): Promise<PutResult> {
   const parsed = parseLibraryPart(text)
-  if ('error' in parsed) return fail([`${recordPath}: ${parsed.error}`])
+  if ('error' in parsed) return fail([`${source}: ${parsed.error}`])
   const part = parsed.part
   const pn = part.partNumber
   const stem = sanitisePartNumber(pn)

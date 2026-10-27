@@ -48,8 +48,8 @@ const lengthOrNull: Check = (v) =>
 
 const approval = obj({ name: [false, text], date: [false, text] })
 
-/** Each tool's arguments. Unknown fields are refused, as in the op grammar. */
-const ARGS: Record<string, Record<string, FieldSpec>> = {
+/** Each tool's arguments. Unknown fields are refused, as in the op grammar. Main's JSON Schemas are checked against this. */
+export const DOCUMENT_TOOL_ARGS: Record<string, Record<string, FieldSpec>> = {
   get_document: {},
   get_layout: {},
   check: {},
@@ -84,10 +84,10 @@ const ARGS: Record<string, Record<string, FieldSpec>> = {
 }
 
 /** The tools this module runs — main's tool table must name exactly these as renderer tools. */
-export const DOCUMENT_TOOLS = Object.keys(ARGS)
+export const DOCUMENT_TOOLS = Object.keys(DOCUMENT_TOOL_ARGS)
 
 export async function runTool(name: string, args: unknown, ctx: ToolContext): Promise<ToolOutcome> {
-  const spec = ARGS[name]
+  const spec = DOCUMENT_TOOL_ARGS[name]
   if (!spec) return refuse(`unknown tool '${name}'`)
   const a = args ?? {}
   const bad = obj(spec)(a)

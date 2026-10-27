@@ -5,6 +5,7 @@ import { registerPdfHandlers } from './pdf'
 import { buildAppMenu } from './menu'
 import { registerPartsImageHandlers, registerPartsImageScheme } from './partsImagesIpc'
 import { registerPartsLibraryHandlers } from './partsLibraryIpc'
+import { applyMcpSettings, attachDocumentWindow, registerMcp, stopMcp } from './mcp'
 
 // Last-known dirty flag per window, pushed from the renderer via `doc:dirty`.
 // Read synchronously in the `close` handler to guard against silent data loss.
@@ -28,6 +29,8 @@ function createWindow(): void {
   })
 
   win.on('ready-to-show', () => win.show())
+  // MCP document tools go to this window's renderer (it holds the document).
+  attachDocumentWindow(win)
 
   // Guard the most common exit path (window close / Cmd-W / Cmd-Q): if the
   // renderer reported unsaved changes, confirm before discarding them. Mirrors
@@ -75,8 +78,11 @@ app.whenReady().then(() => {
   registerPdfHandlers()
   registerPartsImageHandlers()
   registerPartsLibraryHandlers()
+  registerMcp(buildAppMenu)
   buildAppMenu()
   createWindow()
+  // Agent access stays as the user left it (off on a fresh install).
+  void applyMcpSettings()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -85,4 +91,8 @@ app.whenReady().then(() => {
 // On macOS apps stay active until Cmd+Q; elsewhere quit when all windows close.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  void stopMcp()
 })
