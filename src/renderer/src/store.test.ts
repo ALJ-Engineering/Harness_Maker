@@ -145,6 +145,12 @@ describe('history (undo/redo)', () => {
     s().undo() // back to what is on disk
     expect(s().dirty).toBe(false)
   })
+
+  it('markSaved with the current document is clean', () => {
+    s().applyEdit((d) => d.connectors.push({ id: 'c1', designator: 'X1', cavities: [] }))
+    s().markSaved('/tmp/test.harness.json', s().doc)
+    expect(s().dirty).toBe(false)
+  })
 })
 
 describe('batchEdit', () => {

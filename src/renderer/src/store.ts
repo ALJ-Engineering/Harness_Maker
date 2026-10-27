@@ -907,15 +907,18 @@ export const useHarnessStore = create<HarnessState>()(
       })
     },
 
-    markSaved: (path, written) =>
+    markSaved: (path, written) => {
+      // Compare the store's real documents, not immer drafts of them.
+      const saved = written ?? get().doc
+      const dirty = get().doc !== saved
       set((state) => {
-        const saved = written ?? (state.doc as HarnessDocument)
         state.filePath = path
-        state.dirty = state.doc !== saved
+        state.dirty = dirty
         state.savedDoc = saved
         state.loadRepairs = [] // the file now holds the repaired document
         state.loadMigrations = []
-      }),
+      })
+    },
 
     dismissLoadRepairs: () =>
       set((state) => {

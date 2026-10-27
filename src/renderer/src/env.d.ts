@@ -89,6 +89,9 @@ interface PreloadApi {
   onLibraryChanged: (cb: () => void) => () => void
   onSettingsChanged: (cb: () => void) => () => void
   onMenuAction: (cb: (action: MenuAction) => void) => () => void
+  onMcpCall: (
+    handler: (name: string, args: unknown) => Promise<import('@shared/mcp').ToolOutcome>
+  ) => () => void
   getTheme: () => Promise<'dark' | 'light'>
   setTheme: (theme: 'dark' | 'light') => Promise<void>
 }

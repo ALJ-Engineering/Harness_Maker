@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { LibraryPart } from '../shared/parts/librarySchema'
+import type { McpCall, McpReply, ToolOutcome } from '../shared/mcp'
 
 export interface OpenResult {
   path: string
@@ -184,6 +185,26 @@ const api = {
     const listener = (_e: unknown, action: MenuAction): void => cb(action)
     ipcRenderer.on('menu:action', listener)
     return () => ipcRenderer.removeListener('menu:action', listener)
+  },
+
+  /**
+   * Serve the MCP server's document tools (main → renderer request/response):
+   * main sends `mcp:call`, the handler's outcome goes back on `mcp:result` with
+   * the same id. Main refuses calls at once while no handler is registered
+   * (`mcp:ready`). Returns an unsubscribe function.
+   */
+  onMcpCall: (handler: (name: string, args: unknown) => Promise<ToolOutcome>): (() => void) => {
+    const listener = (_e: unknown, call: McpCall): void => {
+      void handler(call.name, call.args)
+        .catch((e: unknown): ToolOutcome => ({ ok: false, errors: [`internal error: ${(e as Error).message}`] }))
+        .then((outcome) => ipcRenderer.send('mcp:result', { id: call.id, outcome } satisfies McpReply))
+    }
+    ipcRenderer.on('mcp:call', listener)
+    ipcRenderer.send('mcp:ready', true)
+    return () => {
+      ipcRenderer.removeListener('mcp:call', listener)
+      ipcRenderer.send('mcp:ready', false)
+    }
   }
 }
 
