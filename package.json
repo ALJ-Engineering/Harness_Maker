@@ -4,6 +4,7 @@
   "description": "In-house wire-harness drawing/editing tool (formboard drawings + BOM/cut list)",
   "private": true,
   "author": "ALJ Engineering",
+  "license": "GPL-3.0-or-later",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
