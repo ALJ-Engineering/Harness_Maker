@@ -15,7 +15,12 @@ main(process.argv.slice(2), {
   },
   stdinLines: () => createInterface({ input: process.stdin, crlfDelay: Infinity })
 }).then(
-  (code) => process.exit(code),
+  // exitCode, not exit(): Node on Windows aborts ("Assertion failed: !(handle->flags &
+  // UV_HANDLE_CLOSING)") when exit() runs while fetch's sockets are still closing — after
+  // every `harness mcp` session. Nothing else is left running by then, so Node exits at once.
+  (code) => {
+    process.exitCode = code
+  },
   (e) => {
     process.stderr.write(`harness: ${e instanceof Error ? e.message : String(e)}\n`)
     process.exit(1)
