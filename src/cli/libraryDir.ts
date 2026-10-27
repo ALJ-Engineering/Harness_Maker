@@ -6,7 +6,8 @@ import type { CliIO } from './io'
 /** App-data folder names, dev first (electron-vite dev) then packaged (productName). */
 const APP_DIRS = ['harness-editor', 'Harness Editor']
 
-function settingsPaths(io: CliIO): string[] {
+/** The app's settings.json candidates, dev build first. */
+export function settingsPaths(io: CliIO): string[] {
   let base: string
   if (io.platform === 'darwin') base = join(io.home, 'Library', 'Application Support')
   else if (io.platform === 'win32') base = io.env.APPDATA || join(io.home, 'AppData', 'Roaming')

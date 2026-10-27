@@ -1,4 +1,5 @@
 import { homedir } from 'os'
+import { createInterface } from 'readline'
 import { main } from './main'
 
 main(process.argv.slice(2), {
@@ -11,7 +12,8 @@ main(process.argv.slice(2), {
     const chunks: Buffer[] = []
     for await (const c of process.stdin) chunks.push(c as Buffer)
     return Buffer.concat(chunks).toString('utf8')
-  }
+  },
+  stdinLines: () => createInterface({ input: process.stdin, crlfDelay: Infinity })
 }).then(
   (code) => process.exit(code),
   (e) => {

@@ -20,7 +20,8 @@ const io = (env: Record<string, string | undefined> = {}): CliIO => ({
   env,
   home: tmp,
   platform: 'darwin',
-  readStdin: async () => stdin
+  readStdin: async () => stdin,
+  stdinLines: async function* () {}
 })
 const run = (...argv: string[]) => main(argv, io())
 const json = () => JSON.parse(out[out.length - 1])

@@ -10,6 +10,7 @@ import { applyOps } from './apply'
 import { checkDocument, formatCheck } from './check'
 import { showDocument } from './show'
 import { libraryPut, libraryShow, librarySearch, formatHit } from './library'
+import { resolveMcpPort, runMcpBridge } from './mcpBridge'
 
 export const USAGE = `harness - create and edit wire-harness files headlessly
 
@@ -27,6 +28,7 @@ Commands:
   library show <partNumber>          one record, its datasheet and what it lacks
   library search <text>              find records by part number, manufacturer or description
   library dir                        the parts library folder in use, where it came from, whether it exists
+  mcp [--port <n>]                   stdio MCP server bridged to the running app's Agent access (for Claude Desktop)
 
 Options:
   --help, -h      show this help
@@ -34,6 +36,7 @@ Options:
   --json          print one JSON object instead of text
   --create        (apply) start a new file instead of editing one
   --datasheet <x> (library put) datasheet PDF path or URL
+  --port <n>      (mcp) the app's MCP port (else $HARNESS_MCP_PORT, else the app's setting, else 47100)
 
 Exit codes: 0 ok, 1 refused or failed, 2 usage error.
 With --json every refusal (exit 1) prints { "ok": false, "errors": [...] } on stdout; usage errors (exit 2) always go to stderr.
@@ -258,12 +261,23 @@ const libraryCmd: Command = async (args, io) => {
   return 0
 }
 
+/** Runs until stdin closes; stdout is JSON-RPC only, so every problem before that is a usage error on stderr. */
+const mcpCmd: Command = async (args, io) => {
+  const p = parseArgs(args, ['port'])
+  if ('error' in p) return usageError(io, p.error)
+  if (p.positional.length !== 0) return usageError(io, 'mcp takes no arguments')
+  const port = await resolveMcpPort(p.flags.get('port') as string | undefined, io)
+  if (typeof port !== 'number') return usageError(io, port.error)
+  return runMcpBridge(port, io)
+}
+
 const COMMANDS: Record<string, Command> = {
   new: newCmd,
   apply: applyCmd,
   check: checkCmd,
   show: showCmd,
-  library: libraryCmd
+  library: libraryCmd,
+  mcp: mcpCmd
 }
 
 export async function main(argv: string[], io: CliIO): Promise<number> {

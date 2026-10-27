@@ -6,6 +6,10 @@ directories:
 files:
   - out/**
   - package.json
+# The headless CLI as a real file next to the asar: Claude Desktop runs its `mcp` bridge with the
+# app's own executable as Node (ELECTRON_RUN_AS_NODE), see claudeDesktopConfig in src/main/mcp.
+asarUnpack:
+  - out/cli/**
 mac:
   target: [dmg]
   category: public.app-category.developer-tools
