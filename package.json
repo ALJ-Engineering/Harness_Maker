@@ -1,0 +1,44 @@
+{
+  "name": "harness-editor",
+  "version": "0.0.1",
+  "description": "In-house wire-harness drawing/editing tool (formboard drawings + BOM/cut list)",
+  "private": true,
+  "author": "ALJ Engineering",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pack:mac": "npm run build && electron-builder --mac --config electron-builder.yml",
+    "pack:win": "npm run build && electron-builder --win --config electron-builder.yml",
+    "pack:linux": "npm run build && electron-builder --linux --config electron-builder.yml",
+    "build:cli": "node scripts/build-cli.mjs",
+    "harness": "node scripts/build-cli.mjs && node out/cli/harness.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.1",
+    "immer": "^11.1.8",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "esbuild": "0.25.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "types": "dist/ds/index.d.ts"
+}

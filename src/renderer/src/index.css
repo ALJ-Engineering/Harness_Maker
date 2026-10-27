@@ -1,0 +1,1495 @@
+/* ── Theme tokens ─────────────────────────────────────
+   Dark is the default; `data-theme="light"` on <html> overrides. Values come
+   from the CableMaker Dark v2 design (its THEMES object) so the two can be
+   diffed. NOTHING in src/shared/print/ may read these — the printed drawing is
+   always white paper.
+   ──────────────────────────────────────────────────── */
+:root {
+  --canvas-bg: #0f1013;
+  --canvas-dot: #1c1e24;
+  --ink: #f1f2f4;
+  --ink-soft: #c3c7cd;
+  --ink-mute: #7d838c;
+  --node-bg: #1b1d22;
+  --node-border: #2c2f36;
+  --chip-bg: #1b1d22;
+  --chip-border: #2a2d34;
+  --panel-bg: #16181c;
+  --panel-border: #262930;
+  --table-bg: #1e2126;
+  --table-line: #272a31;
+  --row-hover: #23262c;
+  --field-hover: #262930;
+  --bundle: #b9bcc2;
+  --bundle-end: #8d9198;
+  --sheet-line: #3a3e47;
+  --wire-black: #e8e9ec;
+
+  /* Severity + accent: identical in both themes. */
+  --sev-error: #f0565a;
+  --sev-warning: #f2c230;
+  --sev-info: #3b9cf5;
+  --accent: #f0a24a;
+
+  /* Per-severity READABLE-TEXT shade, kept separate from the signal colour
+     above: --sev-* stays the theme-independent hue for dots/borders/tint
+     bases, while these -text tokens are what's actually painted as
+     foreground text. In dark chrome the base hue already reads fine against
+     dark surfaces, so these match it here; the light override below swaps in
+     darker, contrast-checked shades (see task-3-report.md fix round 1 for
+     the computed ratios). */
+  --sev-error-text: #f0565a;
+  --sev-warning-text: #f2c230;
+  --sev-info-text: #3b9cf5;
+
+  /* Solid interactive fill: a third role, distinct from both of the above.
+     --sev-* is the signal hue; --sev-*-text is that hue tuned to read AS
+     text over a themed surface. This is for the opposite pairing — a fixed
+     foreground colour (e.g. `color: #fff`) painted over a SOLID fill of this
+     token, as on a primary button. Identical in both themes because the
+     foreground it must contrast against never changes either; #1565c0 is
+     ~5.7:1 against #fff (see task-3-report.md fix round 2). Do not reuse
+     --sev-info(-text) here — #3b9cf5 fails against white at ~2.9:1. */
+  --info-solid: #1565c0;
+
+  /* Lift under the floating chrome, which sits on live canvas rather than on a
+     surface of its own. Softer in light, where a heavy shadow reads as grime. */
+  --chrome-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+
+  /* Lift under a floating CARD (inspector, DRC popover, modal) — deeper than
+     the chrome's, because a card covers canvas rather than skimming it. */
+  --panel-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  --modal-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+
+  /* The one thing CSS cannot paint: the UA-drawn parts of a form control — a
+     <select>'s popup list, a checkbox, a number spinner, a scrollbar. Without
+     this they stay light-on-light inside a dark card, and the inspector is
+     mostly selects and inputs. */
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --canvas-bg: #f4f4f2;
+  --canvas-dot: #dcdcd7;
+  --ink: #16181c;
+  --ink-soft: #4a4f57;
+  --ink-mute: #8a8f97;
+  --node-bg: #ffffff;
+  --node-border: #d9d9d4;
+  --chip-bg: #ffffff;
+  --chip-border: #e0e0db;
+  --panel-bg: #ffffff;
+  --panel-border: #e4e4df;
+  --table-bg: #f2f2ef;
+  --table-line: #e6e6e1;
+  --row-hover: #ededea;
+  --field-hover: #e8e8e4;
+  --bundle: #8d9198;
+  --bundle-end: #5a5e66;
+  --sheet-line: #b9b9b3;
+  --wire-black: #1a1b1e;
+
+  --sev-error-text: #b71c1c;
+  --sev-warning-text: #8a6100;
+  --sev-info-text: #1565c0;
+
+  --chrome-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  --panel-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+  --modal-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+
+  color-scheme: light;
+}
+
+/* React Flow draws its own chrome from --xy-* vars; point them at our tokens
+   so Background dots, Controls, MiniMap and handles follow the theme. */
+:root {
+  --xy-background-pattern-color: var(--canvas-dot);
+  --xy-controls-button-background-color: var(--chip-bg);
+  --xy-controls-button-background-color-hover: var(--row-hover);
+  --xy-controls-button-color: var(--ink-soft);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--chip-border);
+  --xy-minimap-background-color: var(--panel-bg);
+  --xy-minimap-mask-background-color: rgba(0, 0, 0, 0.5);
+  --xy-node-border-default: var(--node-border);
+  --xy-node-background-color-default: var(--node-bg);
+  --xy-node-color-default: var(--ink);
+  --xy-handle-background-color: var(--ink-mute);
+  --xy-handle-border-color: var(--node-bg);
+  --xy-edge-stroke-default: var(--ink-mute);
+  --xy-attribution-background-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: var(--canvas-bg);
+  color: var(--ink);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.app__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+/* The split canvas: one or two panes side by side, sharing the row with the
+   inspector and the DRC panel. */
+.app__panes {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  /* Positioning context for the floating chrome. The inspector and the DRC
+     popover are NOT in here: both float against the viewport (they are
+     out-of-flow siblings of this box), so this element now spans the whole
+     window and `right: 14px` means the same edge for chrome and card alike.
+     The inspector takes the top-right corner (top 14px, 340px wide) and the
+     top chrome ends just left of it, so the two never overlap; the cards stop
+     60px above the bottom, clear of the bottom bar. */
+  position: relative;
+}
+.app__divider {
+  width: 1px;
+  flex: none;
+  background: var(--node-border);
+  margin: 56px 0 64px;
+}
+.app__canvas {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── Floating chrome ─────────────────────────────────────
+   The top strip and the bottom bar float OVER the canvas instead of docking
+   above it. Both are `pointer-events: none` so every pan, marquee and
+   right-click the canvas had under the old docked header still reaches it;
+   each control opts itself back in.
+   ──────────────────────────────────────────────────────── */
+.chrome {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  z-index: 15;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+.chrome--top {
+  top: 14px;
+  /* End left of the inspector card: its 14px gutter + 340px + a 10px gap. */
+  right: 364px;
+  /* Above the inspector card (z 20): the view picker's menu drops down into
+     the band the card occupies and was opening underneath it. The strip is
+     `pointer-events: none`, so it never blocks clicks on the card. */
+  z-index: 25;
+}
+.chrome--bottom {
+  bottom: 14px;
+  align-items: flex-end;
+}
+.chrome__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* React Flow's own bottom-corner chrome (Controls, MiniMap) would sit under the
+   bottom bar; lift it clear. `.react-flow__panel` carries a 15px margin, so this
+   leaves ~12px between the two. */
+.react-flow__panel.bottom {
+  bottom: 44px;
+}
+
+/* The chrome pill — a chip, a chip-shaped button, or a segmented control. */
+.chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--chip-border);
+  border-radius: 8px;
+  background: var(--chip-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: var(--chrome-shadow);
+}
+.chip--btn {
+  cursor: pointer;
+}
+.chip--btn:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+.chip--btn:disabled {
+  color: var(--ink-mute);
+  cursor: default;
+}
+.chip--on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Something informational is waiting behind this chip — today the load-repairs
+   notice inside the (closed by default) DRC panel. */
+.chip--attn {
+  border-color: var(--sev-info);
+}
+/* A disabled button swallows pointer events, so its tooltip has to hang on a
+   wrapper. The wrapper is layout-transparent; the chip inside keeps every rule. */
+.chip__wrap {
+  display: inline-flex;
+  pointer-events: auto;
+}
+.chip--primary {
+  background: var(--info-solid);
+  border-color: var(--info-solid);
+  color: #fff;
+}
+.chip--primary:hover:not(:disabled) {
+  background: var(--info-solid);
+  filter: brightness(1.12);
+}
+.chip--file {
+  font-weight: 600;
+}
+.chip--rev {
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.chip--stats {
+  color: var(--ink-soft);
+}
+.chip__dirty {
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 0;
+}
+.chip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.chip__mute {
+  color: var(--ink-mute);
+}
+.chip__glyph {
+  font-size: 13px;
+  line-height: 1;
+}
+.chip__caret {
+  color: var(--ink-mute);
+  font-size: 9px;
+}
+.chip__sep {
+  width: 1px;
+  height: 11px;
+  background: var(--chip-border);
+}
+
+/* Split / Single. */
+.seg {
+  pointer-events: auto;
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--chip-border);
+  border-radius: 8px;
+  background: var(--chip-bg);
+  box-shadow: var(--chrome-shadow);
+}
+.seg__btn {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-mute);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.seg__btn:hover {
+  color: var(--ink);
+}
+.seg__btn--on {
+  background: var(--row-hover);
+  color: var(--ink);
+}
+
+/* View picker: the chip plus its drop-down. */
+.vp {
+  position: relative;
+  pointer-events: auto;
+}
+.vp__menu {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  z-index: 1;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  box-shadow: var(--chrome-shadow);
+}
+.vp__menu--up {
+  top: auto;
+  right: auto;
+  bottom: 36px;
+  left: 0;
+}
+.vp__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.vp__item:hover {
+  background: var(--row-hover);
+}
+.vp__tick {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* ── Inspector (properties panel) ─────────────────────────
+   A floating card over the canvas, not a docked column. It is positioned
+   against the VIEWPORT (it is out of flow, and no ancestor is positioned), so
+   `right: 14px` lines up with the floating chrome's own 14px gutter.
+
+   The card clips (`overflow: hidden`) so the 14px radius holds; the SCROLLING
+   happens in `.panel__scroll` inside it, which is what keeps the header pinned
+   while a long connector's cavity table scrolls.
+   ──────────────────────────────────────────────────────── */
+.panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-height: calc(100vh - 74px);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+  font-size: 13px;
+}
+/* Header: what is selected, what kind of thing it is, and a × that clears the
+   selection. The card itself is never hidden — with nothing selected it holds
+   the document properties, which have no other home. */
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.panel__head-text {
+  flex: 1;
+  min-width: 0;
+}
+.panel__head-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel__head-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel__close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-mute);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.panel__remove {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-mute);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.panel__remove:hover {
+  border-color: var(--sev-error);
+  color: var(--sev-error-text);
+}
+/* Minimise caret — the same ▾ the view picker's chip carries. Collapsed, the
+   card is its header alone, so the bottom border has nothing to separate. */
+.panel__toggle {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--row-hover);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.panel__toggle:hover {
+  background: var(--row-hover);
+  color: var(--ink);
+}
+.panel--collapsed .panel__head {
+  border-bottom: none;
+}
+.panel__close:hover {
+  background: var(--row-hover);
+  color: var(--ink);
+}
+.panel__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.panel__hint {
+  padding: 14px 12px;
+  color: var(--ink-mute);
+}
+.panel__create {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+}
+.panel__list {
+  border-top: 1px solid var(--panel-border);
+  margin-top: 6px;
+  padding: 8px 12px;
+}
+.panel__list-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.panel__list-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.panel__list-row--sel {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 4px;
+}
+.panel__list-pick {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 3px 4px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.panel__list-pick:hover {
+  background: var(--row-hover);
+}
+.panel__list-del {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--sev-error-text);
+  font-size: 15px;
+  line-height: 1;
+}
+.panel__section {
+  padding: 10px 12px;
+}
+/* Section headings — the design's uppercase 11px muted label, used both for the
+   editor's own kind line and for the subheads inside it. */
+.panel__kind,
+.panel__subhead {
+  font-weight: 600;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.panel__kind {
+  margin-bottom: 10px;
+}
+.panel__subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 6px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 10px;
+}
+/* A button living inside a subhead is a control, not part of the heading. */
+.panel__subhead .panel__add {
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* The small chip-shaped button used throughout the panel and the modals. The
+   contextual + Twist / + Sleeving / + Label buttons carry no class of their
+   own, so they are styled here rather than in the markup. */
+.panel__add,
+.panel__create button,
+.pf-actions button {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--chip-border);
+  border-radius: 7px;
+  background: var(--chip-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.panel__add:hover:not(:disabled),
+.panel__create button:hover:not(:disabled),
+.pf-actions button:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+.panel__add:disabled,
+.panel__create button:disabled,
+.pf-actions button:disabled {
+  color: var(--ink-mute);
+  cursor: default;
+}
+/* The one affirmative action in a dialog's button row. */
+.panel__add--primary,
+.panel__add--primary:hover:not(:disabled) {
+  background: var(--info-solid);
+  border-color: var(--info-solid);
+  color: #fff;
+}
+
+/* Picture row: thumbnail + Choose…/Remove, in the connector/terminal/splice
+   editors. The thumbnail is `contain` so a portrait photo is letterboxed
+   rather than cropped — same rule the printed block uses. */
+.picture-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.picture-row__toggle.is-on {
+  background: color-mix(in srgb, var(--sev-info) 12%, transparent);
+  border-color: var(--sev-info);
+  color: var(--sev-info-text);
+}
+.picture-row__thumb {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
+}
+
+.pf {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.pf__label {
+  color: var(--ink-mute);
+  font-size: 12px;
+}
+/* A field reads as a flat plate at rest (the design only ever draws fields at
+   rest), lifts on hover, and becomes a real bordered input on focus. Same
+   picture as the mockup, every editor still an editor. */
+.pf__input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--table-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.pf__input:hover {
+  background: var(--field-hover);
+}
+.pf__input:focus {
+  background: var(--field-hover);
+  border-color: var(--chip-border);
+  outline: none;
+}
+.pf__input::placeholder {
+  color: var(--ink-mute);
+}
+/* The multiline Notes field sizes itself from `rows`, so it must not take the
+   fixed control height. */
+textarea.pf__input {
+  height: auto;
+  padding: 5px 9px;
+  resize: vertical;
+}
+.pf__ro {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pf__colorrow,
+.pf__gauge {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pf__gauge .pf__input:first-child {
+  width: 70px;
+}
+.pf__swatch {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--chip-border);
+  border-radius: 3px;
+}
+
+/* The pin table: a --table-bg plate with --table-line row rules and a muted
+   position column, holding the same editable cells it always had.
+
+   This base rule is SHARED by four tables — the connector's cavities, the
+   segment's "Carries" list, the library dialog's detail table and
+   LibraryPartForm's — so it must carry only the plate, and nothing that
+   decides column widths. The 5-column budget below is scoped to
+   `.cavtable--cavities`, `table-layout: fixed` included: under fixed layout a
+   table with no specified widths divides the space EQUALLY, which gave
+   LibraryPartForm's ✕ column a quarter of the row. */
+.cavtable {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--table-bg);
+  font-size: 11px;
+}
+.cavtable th {
+  text-align: left;
+  color: var(--ink-mute);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 5px;
+  border-bottom: 1px solid var(--table-line);
+}
+.cavtable td {
+  padding: 2px;
+  border-bottom: 1px solid var(--table-line);
+  vertical-align: top;
+}
+.cavtable tr:last-child td {
+  border-bottom: none;
+}
+/* Column budget at the 340px card: 316px of content, 36 + 76 + 20 fixed leaves
+   ~92px each for the pin and seal pickers. `table-layout: fixed` is what makes
+   those widths stick — without it the pin/seal pickers were squeezed to nothing
+   by the status select. It belongs HERE, with the widths it enforces. */
+.cavtable--cavities {
+  table-layout: fixed;
+}
+.cavtable--cavities th:nth-child(1) {
+  width: 36px;
+}
+.cavtable--cavities th:nth-child(2) {
+  width: 76px;
+}
+.cavtable--cavities th:nth-child(5) {
+  width: 20px;
+}
+/* A cell field sits ON the plate, so it drops its own fill until it is hovered
+   or focused — otherwise every row reads as a stack of chips. */
+.cavtable .pf__input {
+  height: 22px;
+  padding: 0 5px;
+  background: transparent;
+  font-size: 11px;
+}
+.cavtable .pf__input:hover,
+.cavtable .pf__input:focus {
+  background: var(--field-hover);
+}
+.cavtable td:first-child .pf__input {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+/* The picker's drop-down is as wide as its cell, which at ~92px shows nothing.
+   Let it break out — anchored right in the last picker column so it stays
+   inside the card. */
+.cavtable .pp__list {
+  min-width: 190px;
+}
+.cavtable td:nth-child(4) .pp__list {
+  left: auto;
+  right: 0;
+}
+.cavtable__del {
+  border: none;
+  background: none;
+  color: var(--sev-error-text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+}
+.cavtable__del:disabled {
+  color: var(--ink-mute);
+  cursor: default;
+}
+
+/* ── PartPicker: search-as-you-type PartRef field ───────── */
+.pp {
+  position: relative;
+}
+.pp__list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-height: 14em;
+  overflow: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: var(--panel-shadow);
+  margin: 2px 0 0;
+  padding: 2px;
+  list-style: none;
+}
+.pp__row {
+  display: flex;
+  gap: 0.5em;
+  padding: 3px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.pp__row--hi {
+  background: var(--row-hover);
+}
+.pp__pn {
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+}
+.pp__desc {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp__resolved {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+}
+
+/* ── Nodes ───────────────────────────────────────────── */
+.node {
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  background: var(--node-bg);
+  font-size: 12px;
+  min-width: 90px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.node__title {
+  font-weight: 600;
+  padding: 4px 8px;
+  background: var(--row-hover);
+  border-bottom: 1px solid var(--node-border);
+  border-radius: 6px 6px 0 0;
+}
+.node__sub {
+  padding: 4px 8px;
+  color: var(--ink-soft);
+}
+
+.node--connector .node__cavities {
+  display: flex;
+  flex-direction: column;
+}
+.cavity {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 3px 18px 3px 8px;
+  border-bottom: 1px solid var(--table-line);
+}
+.cavity:last-child {
+  border-bottom: none;
+}
+.cavity__pos {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Left-exit connector: handles on the left edge, position label to the right of the handle. */
+.node--exit-left .cavity {
+  padding: 3px 8px 3px 18px;
+  flex-direction: row-reverse;
+}
+.cavity__handle {
+  background: var(--ink-soft);
+}
+
+/* Cavity status: populated = normal; plugged = grayed out;
+   empty = distinct colour with a hollow handle. */
+.cavity--plugged {
+  color: var(--ink-mute);
+  background: var(--field-hover);
+}
+.cavity--plugged .cavity__pos {
+  text-decoration: line-through;
+}
+.cavity--plugged .cavity__handle {
+  background: var(--ink-mute);
+}
+.cavity--empty {
+  color: var(--sev-info-text);
+}
+.cavity--empty .cavity__handle {
+  background: var(--node-bg);
+  border: 1px solid var(--sev-info);
+}
+
+/* Same rectangle as a connector (the base `.node` radius); the old rounded
+   lug-shaped left side read as a broken box at schematic zoom. */
+.node--terminal {
+  padding-bottom: 4px;
+}
+
+.node--splice {
+  padding-bottom: 4px;
+  border-radius: 6px;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 10%, var(--node-bg));
+}
+.node--splice .node__title {
+  background: color-mix(in srgb, var(--accent) 18%, var(--node-bg));
+}
+
+.node--branch {
+  /* Same size as a formboard body dot (.node--fb-dot, SCREEN_DOT). */
+  width: 6px;
+  height: 6px;
+  min-width: 0;
+  border-radius: 50%;
+  background: #333;
+  border: 1px solid #000;
+}
+
+.node--branch-hl {
+  box-shadow: 0 0 0 4px rgba(251, 140, 0, 0.4);
+}
+
+/* A formboard body: one dot at the placement, same size as a branch point.
+   The GLYPH is screen-scale — a 6-unit disc, where the PDF prints a 3.6 mm dot —
+   so the dot and its label offset are NOT the print geometry. What matches the
+   1:1 PDF is the model geometry: the dot's CENTRE is the placement, so the
+   segments between dots and their length labels are the printed ones. */
+.node--fb-dot {
+  /* = SCREEN_DOT in FormboardBodyNode.tsx */
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #333;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+}
+
+.node--fb-dot-selected {
+  box-shadow: 0 0 0 3px #1976d2;
+}
+
+/* Both halos are box-shadows, so the more specific rule used to WIN outright:
+   selecting a DRC-highlighted dot hid the very highlight you clicked it to
+   inspect. Stack them instead — selection ring inside, DRC glow outside. */
+.node--fb-dot-selected.node--branch-hl {
+  box-shadow:
+    0 0 0 3px #1976d2,
+    0 0 0 7px rgba(251, 140, 0, 0.4);
+}
+
+/* 4.2px ~= LABEL_FONT at 1 flow unit = 1 mm; React Flow scales it with zoom. */
+.node--fb-dot__label {
+  position: absolute;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  font-size: 4.2px;
+  font-weight: 600;
+  color: #222;
+  transform: translateY(-50%);
+}
+
+.node--label {
+  /* Live marker: a white dot the size of a branch point, sitting ON the wire.
+     Kind + text are shown in the panel and the 1:1 SVG, not on the canvas. */
+  width: 12px;
+  height: 12px;
+  min-width: 0;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #333;
+  cursor: grab;
+}
+.node--label-sel {
+  outline: 2px solid #fb8c00;
+}
+.node--label-hl {
+  box-shadow: 0 0 0 3px rgba(251, 140, 0, 0.4);
+}
+
+/* ── Canvas context menu (right-click to add an element) ── */
+.ctxmenu {
+  position: fixed;
+  z-index: 20;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+.ctxmenu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ctxmenu__item:hover {
+  background: var(--row-hover);
+}
+
+/* ── DRC popover ──────────────────────────────────────────
+   Anchored above the DRC chip in the bottom bar (chip occupies 14–44px), on the
+   same card surface as the inspector. The LIST scrolls, not the card, so the
+   header, the load-repairs notice and the dismissed-count footer stay put.
+   ──────────────────────────────────────────────────────── */
+.drc {
+  position: absolute;
+  left: 14px;
+  bottom: 60px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+  font-size: 13px;
+}
+.drc__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.drc__row {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--table-line);
+}
+.drc__row:hover {
+  background: var(--row-hover);
+}
+.drc__row:last-child {
+  border-bottom: none;
+}
+.drc__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Severity reads as a 7px dot, the same signal the DRC chip in the bottom bar
+   uses. The word it replaces survives as the dot's tooltip + aria-label. */
+.drc__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.drc__dot--error {
+  background: var(--sev-error);
+}
+.drc__dot--warning {
+  background: var(--sev-warning);
+}
+.drc__dot--info {
+  background: var(--sev-info);
+}
+.drc__ruleid {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.drc__dismiss {
+  flex: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-mute);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.drc__dismiss:hover {
+  background: var(--row-hover);
+  color: var(--sev-error-text);
+}
+.drc__message {
+  margin-top: 3px;
+  color: var(--ink-soft);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.drc__message:hover {
+  color: var(--ink);
+}
+.drc__footer {
+  flex: none;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--ink-mute);
+  border-top: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+.drc__reset {
+  border: none;
+  background: none;
+  color: var(--sev-info-text);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.drc__reset:hover {
+  text-decoration: underline;
+}
+
+/* After a box select React Flow lays a "nodes selection" rectangle over the
+   selected nodes' bounds. It swallows every click inside it — Shift-click
+   could not take one item back out — and it grabs focus so arrow keys move
+   the nodes in React Flow's view state only, never committed to the document.
+   Each selected node already shows its own ring, and dragging any selected
+   node moves the whole selection, so the rectangle is not drawn at all. */
+.react-flow__nodesselection {
+  display: none;
+}
+
+/* Schematic body selection. React Flow styles `.selected` only on its built-in
+   node types, so a selected connector/terminal/splice — including one selected
+   from the formboard pane — showed nothing. Schematic-only classes: the
+   formboard dots carry their own literal ring (`.node--fb-dot-selected`). */
+.react-flow__node.selected > .node--connector,
+.react-flow__node.selected > .node--terminal,
+.react-flow__node.selected > .node--splice {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── Wire (edge) selection + hover feedback ──────────────
+   Wires carry an inline stroke (their IEC colour), so selection keeps the
+   colour but thickens the line and adds a halo. !important is needed to beat
+   the inline stroke-width. */
+.react-flow__edge {
+  cursor: pointer;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3 !important;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+}
+/* Gauge label rendered by the custom wire edge. */
+.wire-label {
+  position: absolute;
+  pointer-events: none;
+  font-size: 10px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--node-bg) 85%, transparent);
+  color: var(--ink-soft);
+}
+.wire-label--sel {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--ink);
+}
+
+/* The formboard is white paper in BOTH themes, like the PDF it previews. Its
+   marks (dots, labels, grey segments, tables) are light-theme literals drawn
+   for a white sheet; on the dark canvas they read as dark-on-dark. Literals
+   only — this pane references no token (see ARCHITECTURE "Theming"). The
+   `--xy-*` values are set to literals here, overriding the token-driven
+   defaults on `:root` for this pane only; the floating Controls and MiniMap
+   keep their own (themed) variables. */
+.react-flow.rf-formboard {
+  --xy-background-color: #ffffff;
+  --xy-background-pattern-color: #d6d6d0;
+  background: #ffffff;
+}
+
+/* Formboard view: connections are made only in the schematic, so handles are
+   non-interactive here — no connect crosshair, and a drag grabs the node body
+   (so branch points / connectors move easily). Handles still anchor the
+   rendered segment edges (pointer-events doesn't affect edge rendering). */
+.rf-formboard .react-flow__handle {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* The inline limb-length input (FormboardSegmentEdge): no spinner — at 6 px
+   label text the spin buttons would be bigger than the number. */
+.segment-length-input::-webkit-inner-spin-button,
+.segment-length-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Load-repairs notice. It sat in the docked header until the floating chrome
+   replaced it; its button already opened the DRC panel, so it lives in that
+   panel's own header — and did not move when the panel became a popover. It is
+   `flex: none` so it is never the thing that scrolls away. */
+.drc__repairs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--sev-warning) 12%, transparent);
+  font-size: 12px;
+}
+.drc__repairs-text {
+  flex: 1;
+  color: var(--sev-warning-text);
+}
+.drc__repairs-close {
+  background: none;
+  border: none;
+  color: var(--sev-warning-text);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+/* ── Modals (export, parts library) ──────────────────────
+   One card surface, one blurred backdrop; both dialogs keep every control they
+   had.
+   ──────────────────────────────────────────────────────── */
+.modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel-bg);
+  color: var(--ink);
+  padding: 18px 20px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  min-width: 420px;
+  box-shadow: var(--modal-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+.modal h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.modal__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+/* A bare <select> in a dialog row sits beside its label, so it sizes to its
+   content rather than taking the `.pf__input` full-width rule. */
+.modal__select {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--chip-border);
+  border-radius: 7px;
+  background: var(--chip-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.modal__hint {
+  color: var(--ink-soft);
+}
+/* Plan warnings (tables overlapping, a table over a wire) — seen before print. */
+.modal__warn {
+  color: var(--sev-warning-text);
+  background: color-mix(in srgb, var(--sev-warning) 12%, transparent);
+  border: 1px solid var(--sev-warning);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+/* Informational note (n bodies have no picture) — not a warning, so it reads
+   quieter than `.modal__warn` sitting right above it. */
+.modal__info {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Parts library dialog (browser + editor) ────────────────────────────── */
+.libdlg {
+  min-width: 640px;
+  max-width: 90vw;
+  max-height: 85vh;
+}
+.libdlg__toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.libdlg__toolbar .pf__input:first-child {
+  flex: 1;
+}
+/* …and the kind filter must NOT. `.pf__input` sets `width: 100%`, which becomes
+   the select's flex-basis and swallowed the row, collapsing the search box to
+   ~20px. */
+.libdlg__toolbar select.pf__input {
+  flex: 0 0 auto;
+  width: auto;
+}
+.libdlg__body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  min-height: 320px;
+}
+/* The cap sits on the panes, not the grid: a max-height on the grid leaves its
+   auto row sized to the full list, which then spills out unscrolled. */
+.libdlg__list {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+.libdlg__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--table-line);
+  padding: 5px 8px;
+  cursor: pointer;
+  font: inherit;
+}
+.libdlg__row:hover {
+  background: var(--row-hover);
+}
+.libdlg__row--sel {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.libdlg__row-pn {
+  font-weight: 600;
+  flex: none;
+}
+.libdlg__row-desc {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+.libdlg__row-glyphs {
+  flex: none;
+  font-size: 12px;
+}
+.libdlg__detail {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.libdlg__detail-body > * {
+  margin-bottom: 6px;
+}
+.libdlg__detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.libdlg__place {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--info-solid);
+  border-radius: 7px;
+  background: var(--info-solid);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.libdlg__errors {
+  font-size: 12px;
+  color: var(--sev-warning-text);
+}
+.libdlg__errors summary {
+  cursor: pointer;
+}
+
+/* The form's own scroll area — the dialog box itself doesn't scroll, so a
+   long connector cavity table doesn't push Save/Cancel off-screen. */
+.pf-form {
+  overflow-y: auto;
+  max-height: 65vh;
+  padding-right: 4px;
+}
+.pf-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pf-error {
+  color: var(--sev-error-text);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+/* ── Board furniture (formboard view) ──────────────────────────────────────
+   The sheet node draws the page the export will print. It must never take a
+   click: React Flow's own `.react-flow__node` sets `pointer-events: all`, so
+   the wrapper is overridden here as well as the inner div. */
+.react-flow__node-formboardSheet {
+  pointer-events: none;
+}
+/* …except the warnings badge, which is there to be hovered. */
+.node--sheet-warn {
+  position: absolute;
+  top: -9px;
+  left: 0;
+  font-size: 7px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: #8a6100;
+  background: #fff8e1;
+  border: 0.4px solid #f0dca0;
+  border-radius: 2px;
+  cursor: help;
+  white-space: nowrap;
+}
+
+/* Pinout tables and the BOM block: draggable, and outlined once pinned so it
+   is obvious which ones the planner no longer moves. */
+.node--block {
+  cursor: grab;
+  outline: 1px dashed transparent;
+}
+.node--block-pinned {
+  outline-color: #1565c0;
+}
+.node--block-selected {
+  outline: 2px solid #1976d2;
+}
+
+/* Leader from a pinout table to its parent connector, shown only while the
+   table is being dragged. Drawn in flow mm via ViewportPortal; the stroke is
+   non-scaling so it stays one hairline at any zoom. */
+.table-leader {
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+.table-leader line {
+  stroke: #1976d2;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.table-leader circle {
+  fill: #1976d2;
+}

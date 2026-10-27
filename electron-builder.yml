@@ -1,0 +1,16 @@
+appId: com.aljengineering.harness-editor
+productName: Harness Editor
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+mac:
+  target: [dmg]
+  category: public.app-category.developer-tools
+win:
+  target: [nsis]
+linux:
+  target: [AppImage, deb]
+  category: Development
