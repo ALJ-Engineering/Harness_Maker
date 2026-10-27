@@ -9,3 +9,16 @@ release/
 *.tsbuildinfo
 __pycache__/
 *.pyc
+
+# local AI-tooling files (kept on disk, never committed)
+.claude/
+CLAUDE.md
+.superpowers/
+docs/superpowers/
+docs/STATUS.md
+.design-sync/
+.ds-sync/
+ds-bundle/
+scripts/build-ds.mjs
+tsconfig.ds.json
+src/renderer/src/ds/
