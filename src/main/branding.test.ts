@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, mkdir, rm, writeFile, symlink } from 'fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { logoDataUrl } from './branding'
+import { SYMLINK_SKIP, trySymlink } from './testSymlink'
 
 /** A hand-built 2 x 3 PNG: signature + a complete IHDR chunk header. */
 const PNG = new Uint8Array([
@@ -53,15 +54,18 @@ describe('logoDataUrl', () => {
     expect(await logoDataUrl(lib)).toBeNull()
   })
 
-  it('rejects a file over the size cap, and a symlink out of the library', async () => {
+  it('rejects a file over the size cap, and a symlink out of the library', async ({ skip }) => {
     await mkdir(join(lib, 'branding'))
     await writeFile(join(lib, 'branding', 'logo.png'), PNG)
     expect(await logoDataUrl(lib, 10)).toBeNull()
     await rm(join(lib, 'branding', 'logo.png'))
     const outside = await mkdtemp(join(tmpdir(), 'outside-'))
-    await writeFile(join(outside, 'x.png'), PNG)
-    await symlink(join(outside, 'x.png'), join(lib, 'branding', 'logo.png'))
-    expect(await logoDataUrl(lib)).toBeNull()
-    await rm(outside, { recursive: true, force: true })
+    try {
+      await writeFile(join(outside, 'x.png'), PNG)
+      if (!(await trySymlink(join(outside, 'x.png'), join(lib, 'branding', 'logo.png')))) return skip(SYMLINK_SKIP)
+      expect(await logoDataUrl(lib)).toBeNull()
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
   })
 })
