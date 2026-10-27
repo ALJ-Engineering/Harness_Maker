@@ -135,6 +135,95 @@ describe('history (undo/redo)', () => {
     s().undo() // back to the saved 1-connector state
     expect(s().dirty).toBe(false)
   })
+
+  it('markSaved with the written document stays dirty for an edit made during the write', () => {
+    const written = s().doc
+    s().applyEdit((d) => d.connectors.push({ id: 'c1', designator: 'X1', cavities: [] }))
+    s().markSaved('/tmp/test.harness.json', written)
+    expect(s().savedDoc).toBe(written)
+    expect(s().dirty).toBe(true)
+    s().undo() // back to what is on disk
+    expect(s().dirty).toBe(false)
+  })
+})
+
+describe('batchEdit', () => {
+  beforeEach(() => resetEmpty())
+  const add = (id: string) => s().applyEdit((d) => d.connectors.push({ id, designator: id, cavities: [] }))
+
+  it('collapses the actions it runs into ONE undo step', () => {
+    add('c0')
+    const before = s().doc
+    expect(
+      s().batchEdit(() => {
+        add('c1')
+        add('c2')
+        add('c3')
+        return true
+      })
+    ).toBe(true)
+    expect(s().doc.connectors).toHaveLength(4)
+    expect(s().past).toHaveLength(2)
+    expect(s().past[1]).toBe(before)
+    expect(s().dirty).toBe(true)
+    s().undo()
+    expect(s().doc).toBe(before)
+  })
+
+  it('a refusal restores doc, past, future and dirty exactly', () => {
+    add('c0')
+    s().undo() // leaves a redo entry, so `future` is non-empty too
+    const snap = s()
+    expect(
+      s().batchEdit(() => {
+        add('c1')
+        add('c2')
+        return false
+      })
+    ).toBe(false)
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+    expect(s().future).toBe(snap.future)
+    expect(s().dirty).toBe(snap.dirty)
+  })
+
+  it('a throw restores the snapshot and rethrows', () => {
+    const snap = s()
+    expect(() =>
+      s().batchEdit(() => {
+        add('c1')
+        throw new Error('boom')
+      })
+    ).toThrow('boom')
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+    expect(s().dirty).toBe(false)
+  })
+
+  it('a run that changes nothing leaves no history entry', () => {
+    add('c0')
+    const snap = s()
+    expect(s().batchEdit(() => (s().applyEdit(() => {}), true))).toBe(true)
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+  })
+
+  it('keeps the history limit', () => {
+    for (let i = 0; i < 200; i++) add(`p${i}`)
+    expect(s().past).toHaveLength(200)
+    const before = s().doc
+    s().batchEdit(() => (add('x'), add('y'), true))
+    expect(s().past).toHaveLength(200)
+    expect(s().past[199]).toBe(before)
+  })
+
+  it('batch back to the saved document is clean', () => {
+    const saved = s().doc
+    add('c0')
+    s().batchEdit(() => (s().undo(), true))
+    expect(s().doc).toBe(saved)
+    expect(s().dirty).toBe(false)
+  })
 })
 
 describe('wire creation / deletion', () => {

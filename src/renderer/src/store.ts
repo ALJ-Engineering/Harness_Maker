@@ -176,10 +176,24 @@ export interface HarnessState {
 
   setDocument: (doc: HarnessDocument, path: string | null, load?: LoadInfo, opts?: SetDocumentOpts) => void
   newDocument: () => void
-  markSaved: (path: string) => void
+  /**
+   * The document is on disk at `path`. `written` is the document that was
+   * serialised (default: the current one): an edit that landed while the write
+   * was in flight is NOT on disk, so the store stays dirty for it.
+   */
+  markSaved: (path: string, written?: HarnessDocument) => void
   dismissLoadRepairs: () => void
 
   applyEdit: (recipe: (doc: Draft<HarnessDocument>) => void) => void
+
+  /**
+   * Run several actions as ONE undoable edit, all or nothing (the MCP tools'
+   * batches). `run` calls ordinary actions; returning false or throwing
+   * restores `doc`, `past`, `future` and `dirty` exactly as they were. On
+   * success the history entries `run` pushed collapse into one; a run that
+   * changed nothing leaves no entry. Returns whether `run` succeeded.
+   */
+  batchEdit: (run: () => boolean) => boolean
 
   /**
    * Commit final node positions after a drag gesture, as ONE undoable edit.
@@ -893,11 +907,12 @@ export const useHarnessStore = create<HarnessState>()(
       })
     },
 
-    markSaved: (path) =>
+    markSaved: (path, written) =>
       set((state) => {
+        const saved = written ?? (state.doc as HarnessDocument)
         state.filePath = path
-        state.dirty = false
-        state.savedDoc = state.doc
+        state.dirty = state.doc !== saved
+        state.savedDoc = saved
         state.loadRepairs = [] // the file now holds the repaired document
         state.loadMigrations = []
       }),
@@ -917,6 +932,26 @@ export const useHarnessStore = create<HarnessState>()(
         recipe(state.doc)
         state.dirty = state.doc !== state.savedDoc
       })
+    },
+
+    batchEdit: (run) => {
+      // Frozen immer snapshots: holding the references is a full snapshot.
+      const { doc, past, future, dirty } = get()
+      let ok: boolean
+      try {
+        ok = run()
+      } catch (e) {
+        set({ doc, past, future, dirty })
+        throw e
+      }
+      if (!ok) {
+        set({ doc, past, future, dirty })
+        return false
+      }
+      const now = get().doc
+      if (now === doc) set({ past, future, dirty })
+      else set({ past: [...past, doc].slice(-HISTORY_LIMIT), future: [], dirty: now !== get().savedDoc })
+      return true
     },
 
     commitNodePositions: (moves, target) => {

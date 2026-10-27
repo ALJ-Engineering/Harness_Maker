@@ -141,14 +141,15 @@ export function useFileOps(): {
       serializeDocument(doc),
       filePath ?? DEFAULT_NAME
     )
-    if (path) markSaved(path)
+    // `doc`, not the store's current one: an agent edit during the await is not on disk.
+    if (path) markSaved(path, doc)
   }, [])
 
   const save = useCallback(async () => {
     const { doc, filePath, markSaved } = useHarnessStore.getState()
     if (!filePath) return saveAs()
     const written = await window.api.saveDocument(filePath, serializeDocument(doc))
-    markSaved(written)
+    markSaved(written, doc)
   }, [saveAs])
 
   const open = useCallback(async () => {
