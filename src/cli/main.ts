@@ -2,13 +2,13 @@ import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import type { HarnessDocument } from '@shared/model/schema'
 import { emptyDocument } from '@shared/model/document'
-import { natCompare } from '@shared/model/anchors'
 import type { CliIO } from './io'
 import { resolveLibrary, libraryDirExists, type LibrarySource } from './libraryDir'
 import { loadHarness, saveHarness, openLibrary, type LibraryContext } from './session'
 import { parseOps } from './ops'
 import { applyOps } from './apply'
 import { checkDocument, formatCheck } from './check'
+import { showDocument } from './show'
 import { libraryPut, libraryShow, librarySearch, formatHit } from './library'
 
 export const USAGE = `harness - create and edit wire-harness files headlessly
@@ -188,14 +188,7 @@ const showCmd: Command = async (args, io) => {
   if (p.positional.length !== 1) return usageError(io, 'show needs exactly one <file>')
   const loaded = await open(p.positional[0], io, asJson(p))
   if (!loaded) return 1
-  const { doc } = loaded
-  const bodies = [
-    ...doc.connectors.map((c) => ({ designator: c.designator, kind: 'connector', partNumber: c.housing?.partNumber ?? '' })),
-    ...doc.freeTerminals.map((t) => ({ designator: t.designator, kind: 'terminal', partNumber: t.part?.partNumber ?? '' })),
-    ...doc.splices.map((s) => ({ designator: s.designator, kind: 'splice', partNumber: s.part?.partNumber ?? '' }))
-  ].sort((a, b) => natCompare(a.designator, b.designator))
-  const cables = doc.cables.map((c) => ({ name: c.name, partNumber: c.part?.partNumber ?? '', cores: c.coreWireIds.length }))
-  const wireCount = doc.wires.length
+  const { bodies, wireCount, cables } = showDocument(loaded.doc)
   if (asJson(p)) {
     io.out(JSON.stringify({ bodies, wireCount, cables }))
     return 0
