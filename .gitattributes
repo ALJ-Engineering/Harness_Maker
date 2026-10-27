@@ -1,0 +1,9 @@
+# LF everywhere, whatever core.autocrlf says: the shell scripts must run under bash (Git Bash on
+# Windows) and the sources diff the same on every machine.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.ico binary
