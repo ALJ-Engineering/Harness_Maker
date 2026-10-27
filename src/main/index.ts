@@ -67,6 +67,10 @@ function createWindow(): void {
 registerPartsImageScheme()
 
 app.whenReady().then(() => {
+  // Windows groups taskbar buttons and pins by AppUserModelID. The installer stamps its
+  // shortcuts with electron-builder's `appId`, so the running app must claim the same one or a
+  // pinned shortcut and the open window show up as two separate taskbar icons.
+  if (process.platform === 'win32') app.setAppUserModelId('com.aljengineering.harness-editor')
   registerFileHandlers()
   registerPdfHandlers()
   registerPartsImageHandlers()

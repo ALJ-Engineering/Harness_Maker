@@ -25,9 +25,12 @@ function send(action: MenuAction): void {
  */
 export function buildAppMenu(): void {
   const isMac = process.platform === 'darwin'
+  // Top-level labels carry an `&` access key off macOS, so Alt+F etc. open the menus on
+  // Windows and Linux. macOS menus have no access keys.
+  const top = (label: string): string => (isMac ? label : `&${label}`)
 
   const fileMenu: MenuItemConstructorOptions = {
-    label: 'File',
+    label: top('File'),
     submenu: [
       { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
       { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
@@ -51,7 +54,7 @@ export function buildAppMenu(): void {
   // Custom Edit menu: our document Undo/Redo (NOT role:'undo', which is the
   // native text-field undo) plus the standard clipboard roles for text inputs.
   const editMenu: MenuItemConstructorOptions = {
-    label: 'Edit',
+    label: top('Edit'),
     submenu: [
       { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send('undo') },
       { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => send('redo') },
@@ -70,7 +73,7 @@ export function buildAppMenu(): void {
 
   // App-level preferences that main owns outright (no renderer round-trip).
   const settingsMenu: MenuItemConstructorOptions = {
-    label: 'Settings',
+    label: top('Settings'),
     submenu: [
       { label: 'Parts library…', accelerator: 'CmdOrCtrl+L', click: () => send('openLibrary') },
       {
@@ -87,8 +90,8 @@ export function buildAppMenu(): void {
     fileMenu,
     editMenu,
     settingsMenu,
-    { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    { role: 'viewMenu', label: top('View') },
+    { role: 'windowMenu', label: top('Window') }
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
