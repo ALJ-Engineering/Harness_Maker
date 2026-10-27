@@ -126,7 +126,7 @@ describe('part pictures in the set', () => {
  *                          block's 0.5 mm outer frame vanished entirely)
  *
  * Nothing else notices either case: with both sabotages in place
- * `scripts/check-pdf-scale.sh` still measured the 100 mm bar at 1181.000 px and
+ * `scripts/check-pdf-scale.mjs` still measured the 100 mm bar at 1181.000 px and
  * every other test in `src/shared/print/` still passed. The scale check measures
  * geometry; a colour is invisible to it. These two tests are the only thing
  * standing between a theme token and a manufacturing drawing with a missing

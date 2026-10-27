@@ -136,7 +136,7 @@ npm run build        # typecheck and bundle to out/
 
 Stack: Electron, React 19, TypeScript, React Flow for the canvas, Zustand and Immer for the
 document store. PDFs are rendered with Chromium's print engine so the 1:1 output is identical on
-every platform. `scripts/check-pdf-scale.sh <drawing-set.pdf> 1` measures the scale bar on an
+every platform. `node scripts/check-pdf-scale.mjs <drawing-set.pdf> 1` measures the scale bar on an
 exported PDF (needs poppler and Python 3).
 
 Further reading:
