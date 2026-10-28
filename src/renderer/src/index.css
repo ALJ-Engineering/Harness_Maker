@@ -191,9 +191,9 @@ body,
   top: 14px;
   /* End left of the inspector card: its 14px gutter + 340px + a 10px gap. */
   right: 364px;
-  /* Above the inspector card (z 20): the view picker's menu drops down into
-     the band the card occupies and was opening underneath it. The strip is
-     `pointer-events: none`, so it never blocks clicks on the card. */
+  /* Above the inspector card (z 20), so nothing the strip opens can slide
+     underneath it. The strip is `pointer-events: none`, so it never blocks
+     clicks on the card. */
   z-index: 25;
 }
 .chrome--bottom {
@@ -304,7 +304,7 @@ body,
   background: var(--chip-border);
 }
 
-/* Split / Single. */
+/* Segmented toggles: Single / Split, and each pane's view (ViewPicker). */
 .seg {
   pointer-events: auto;
   display: inline-flex;
@@ -315,6 +315,9 @@ body,
   box-shadow: var(--chrome-shadow);
 }
 .seg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
   padding: 0 10px;
   border: none;
@@ -333,8 +336,15 @@ body,
   background: var(--row-hover);
   color: var(--ink);
 }
+/* "Left" / "Right" in front of a split pane's view toggle. */
+.seg__side {
+  align-self: center;
+  padding: 0 6px 0 8px;
+  color: var(--ink-mute);
+  font-size: 12px;
+}
 
-/* View picker: the chip plus its drop-down. */
+/* The Add menu: a chip plus its drop-down (BottomBar). */
 .vp {
   position: relative;
   pointer-events: auto;
