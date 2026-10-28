@@ -244,8 +244,25 @@ describe('harness commands', () => {
     expect(out.join('')).toContain('HSG-2')
     out = []
     expect(await run('library', 'show', 'HSG-2', '--library', lib, '--json')).toBe(0)
-    expect(json()).toMatchObject({ part: { partNumber: 'HSG-2' }, hasDatasheet: true, incomplete: [] })
+    expect(json()).toMatchObject({ part: { partNumber: 'HSG-2' }, hasDatasheet: true, hasPicture: false, incomplete: [] })
     expect(await run('library', 'show', 'ZZZ', '--library', lib)).toBe(1)
+  })
+
+  it('library put --picture adds a picture to the part; show says so', async () => {
+    const lib = await buildLibrary()
+    const png = join(tmp, 'photo.png')
+    const head = Buffer.alloc(24)
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(head)
+    head.writeUInt32BE(8, 16)
+    head.writeUInt32BE(6, 20)
+    writeFileSync(png, head)
+    const wire = full(newLibraryPart('wire', 'W-05'))
+    wire.wire = { gauge: mm05 }
+    expect(await run('library', 'put', rec('wire2', wire), '--picture', png, '--library', lib)).toBe(0)
+    expect(existsSync(join(lib, 'images', 'W-05.png'))).toBe(true)
+    out = []
+    expect(await run('library', 'show', 'W-05', '--library', lib)).toBe(0)
+    expect(out.join('')).toContain('picture: yes')
   })
 
   it('check on a missing file exits 1 with "cannot open"; new refuses an existing file', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { newLibraryPart } from '@shared/parts/librarySchema'
@@ -73,6 +73,32 @@ describe('library tools (main)', () => {
     const r = await runLibraryTool('library_put', { record: full(newLibraryPart('pin', 'PIN-3')) }, dir)
     expect(r.ok).toBe(false)
     expect(await runLibraryTool('library_show', { partNumber: 'PIN-3' }, dir)).toMatchObject({ ok: false })
+  })
+
+  it('library_put takes a picture: a PNG lands in images/, a non-image is refused', async () => {
+    const pin = full(newLibraryPart('pin', 'PIN-2'))
+    const pdf = join(tmp, 'stub-datasheet.pdf')
+    const png = join(tmp, 'photo.png')
+    const head = Buffer.alloc(24)
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(head)
+    head.writeUInt32BE(8, 16)
+    head.writeUInt32BE(6, 20)
+    writeFileSync(png, head)
+    expect((await runLibraryTool('library_put', { record: pin, datasheet: pdf, picture: png }, dir)).ok).toBe(true)
+    expect(existsSync(join(dir, 'images', 'PIN-2.png'))).toBe(true)
+    expect(await runLibraryTool('library_show', { partNumber: 'PIN-2' }, dir)).toMatchObject({ ok: true, result: { hasPicture: true } })
+
+    const gif = join(tmp, 'photo.gif')
+    writeFileSync(gif, 'GIF89a')
+    const pin4 = full(newLibraryPart('pin', 'PIN-4'))
+    expect(await runLibraryTool('library_put', { record: pin4, datasheet: pdf, picture: gif }, dir)).toEqual({
+      ok: false,
+      errors: ['PIN-4: picture: Not a PNG or JPEG image']
+    })
+    expect(await runLibraryTool('library_put', { record: pin4, picture: 7 }, dir)).toEqual({
+      ok: false,
+      errors: ["arguments: 'picture' must be a non-empty string"]
+    })
   })
 
   it('refuses without a library folder, or with one that does not exist', async () => {

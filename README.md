@@ -116,7 +116,7 @@ npm run harness -- check /abs/path/loom.harness.json
 | `apply <file> <ops.json \| -> [--create]` | apply a batch of operations, all or nothing                  |
 | `check <file>`                            | design-rule findings, wiring table, pinouts, incomplete parts |
 | `show <file>`                             | bodies by designator, part numbers, wires, cables            |
-| `library put <record.json>`               | add or replace a part record (refused unless complete)       |
+| `library put <record.json>`               | add or replace a part record (refused unless complete); `--datasheet`, `--picture` |
 | `library show \| search \| dir`             | look up records and the library folder in use                |
 | `mcp [--port <n>]`                        | stdio bridge to the app's Agent access (for Claude Desktop)  |
 
@@ -168,7 +168,7 @@ then listens on `http://127.0.0.1:47100/mcp`, reachable from this computer only;
 | `set_drawing`                                  | sheet size and title block                                                     |
 | `select`                                       | select an element so you can see what the agent means                          |
 | `save_document`                                | save to the drawing's own file (never Save As)                                 |
-| `library_search`, `library_show`, `library_put` | look up and add parts-library records                                         |
+| `library_search`, `library_show`, `library_put` | look up and add parts-library records, with their datasheet and picture        |
 
 The CLI's rules apply: every part must be a complete library record. Web pages cannot reach the
 server, but any program on this computer can while Agent access is on, so turn it off when you are

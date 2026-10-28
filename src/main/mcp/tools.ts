@@ -214,8 +214,8 @@ Ends are named by designator: "X1:7" (cavity 7 of connector X1), "SP1" / "T1" (a
     runsIn: 'main',
     annotations: READ,
     description:
-      'One parts-library record in full (its JSON is the shape library_put takes), whether its datasheet PDF is in the ' +
-      'library, and what it lacks to be complete.',
+      'One parts-library record in full (its JSON is the shape library_put takes), whether its datasheet PDF and its ' +
+      'picture are in the library, and what it lacks to be complete.',
     inputSchema: object({ partNumber: string }, ['partNumber'])
   },
   {
@@ -226,9 +226,12 @@ Ends are named by designator: "X1:7" (cavity 7 of connector X1), "SP1" / "T1" (a
       'Add or replace a parts-library record, as `harness library put` does. `record` is the record JSON (library_show an ' +
       'existing part of the same kind for the shape): partNumber, kind, description, manufacturer, datasheetUrl, plus the ' +
       'kind\'s own block (connector.cavities, wire.gauge, cable.cores…). `datasheet` is a PDF URL (downloaded) or local path. ' +
+      '`picture` is the part\'s photo, a PNG or JPEG of at most 5 MB, as a URL or local path; it replaces any picture the ' +
+      'part had. Other formats (WebP, GIF…) are refused: convert them first. A picture is optional; to give an existing ' +
+      'part one, put its library_show record again with `picture`. ' +
       'Refused, and nothing written, unless the record ends up complete. The library is shared: only add parts the user asked ' +
       'for or confirmed.',
-    inputSchema: object({ record: { type: 'object' }, datasheet: string }, ['record'])
+    inputSchema: object({ record: { type: 'object' }, datasheet: string, picture: string }, ['record'])
   }
 ]
 
@@ -237,7 +240,7 @@ const isRecord: Check = (v) => (typeof v === 'object' && v !== null && !Array.is
 const LIBRARY_ARGS: Record<string, Record<string, FieldSpec>> = {
   library_search: { text: [true, str] },
   library_show: { partNumber: [true, str] },
-  library_put: { record: [true, isRecord], datasheet: [false, str] }
+  library_put: { record: [true, isRecord], datasheet: [false, str], picture: [false, str] }
 }
 
 /** Run a main-side (library) tool against the library folder `dir` (from settings; undefined when none is set). */
@@ -259,7 +262,10 @@ export async function runLibraryTool(name: string, args: unknown, dir: string | 
       if ('unreadable' in r) return refuse(`${pn}: the record file is unreadable: ${r.unreadable}`)
       return { ok: true, result: r }
     }
-    const r = await libraryPutText(dir, JSON.stringify(a.record), 'record', { datasheet: a.datasheet as string | undefined })
+    const r = await libraryPutText(dir, JSON.stringify(a.record), 'record', {
+      datasheet: a.datasheet as string | undefined,
+      picture: a.picture as string | undefined
+    })
     return r.ok ? { ok: true, result: { partNumber: r.partNumber, created: r.created } } : refuse(...r.problems)
   } catch (e) {
     return refuse(`internal error: ${(e as Error).message}`)

@@ -23,9 +23,9 @@ Commands:
                                      apply an all-or-nothing batch of operations ('-' reads stdin)
   check <file>                       DRC findings, wiring table, connector pinouts, incomplete parts
   show <file>                        bodies by designator with part numbers, wire count, cables
-  library put <record.json> [--datasheet <pdf path | https url>]
+  library put <record.json> [--datasheet <pdf path | https url>] [--picture <png/jpg path | https url>]
                                      add or replace a part record (refused unless complete)
-  library show <partNumber>          one record, its datasheet and what it lacks
+  library show <partNumber>          one record, its datasheet and picture, and what it lacks
   library search <text>              find records by part number, manufacturer or description
   library dir                        the parts library folder in use, where it came from, whether it exists
   mcp [--port <n>]                   stdio MCP server bridged to the running app's Agent access (for Claude Desktop)
@@ -36,6 +36,7 @@ Options:
   --json          print one JSON object instead of text
   --create        (apply) start a new file instead of editing one
   --datasheet <x> (library put) datasheet PDF path or URL
+  --picture <x>   (library put) the part's picture: a PNG or JPEG (at most 5 MB) path or URL
   --port <n>      (mcp) the app's MCP port (else $HARNESS_MCP_PORT, else the app's setting, else 47100)
 
 Exit codes: 0 ok, 1 refused or failed, 2 usage error.
@@ -212,7 +213,7 @@ const libraryCmd: Command = async (args, io) => {
   const [sub, ...rest] = args
   if (sub !== 'put' && sub !== 'show' && sub !== 'search' && sub !== 'dir')
     return usageError(io, `library needs a subcommand: put, show, search or dir`)
-  const p = parseArgs(rest, ['library', 'datasheet'])
+  const p = parseArgs(rest, ['library', 'datasheet', 'picture'])
   if ('error' in p) return usageError(io, p.error)
   if (sub === 'dir') {
     if (p.positional.length !== 0) return usageError(io, 'library dir takes no arguments')
@@ -230,7 +231,10 @@ const libraryCmd: Command = async (args, io) => {
   if (!libRef.exists) return refuse(json, io, [missingLibrary(libRef.dir)])
   const [arg] = p.positional
   if (sub === 'put') {
-    const r = await libraryPut(libRef.dir, arg, { datasheet: p.flags.get('datasheet') as string | undefined })
+    const r = await libraryPut(libRef.dir, arg, {
+      datasheet: p.flags.get('datasheet') as string | undefined,
+      picture: p.flags.get('picture') as string | undefined
+    })
     if (!r.ok) return refuse(json, io, r.problems)
     io.out(json ? JSON.stringify(r) : `${r.created ? 'added' : 'replaced'} ${r.partNumber}`)
     return 0
@@ -245,6 +249,7 @@ const libraryCmd: Command = async (args, io) => {
         [
           JSON.stringify(r.part, null, 2),
           `datasheet file: ${r.hasDatasheet ? 'yes' : 'no'}`,
+          `picture: ${r.hasPicture ? 'yes' : 'no'}`,
           r.incomplete.length ? `incomplete:\n${r.incomplete.map((x) => `  ${x}`).join('\n')}` : 'complete'
         ].join('\n')
       )

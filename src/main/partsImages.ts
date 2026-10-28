@@ -16,7 +16,8 @@ export { sanitisePartNumber, imageHref, PARTS_IMAGE_SCHEME } from '../shared/par
 /** The only extensions the library uses — probe order for a lookup, filter for a listing. */
 const IMAGE_EXTS: readonly string[] = ['.png', '.jpg', '.jpeg']
 const MIME: Record<string, string> = { png: 'image/png', jpeg: 'image/jpeg' }
-const DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+/** The largest picture the library takes (the Library dialog, `library put --picture`, MCP). */
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 /**
  * How much of a file `listImages` reads to size it. `imageSize` needs 24 bytes
  * for a PNG and, for a JPEG, everything up to the first SOF marker — which sits
@@ -126,7 +127,7 @@ export async function importImage(
   dir: string,
   pn: string,
   src: string,
-  maxBytes = DEFAULT_MAX_BYTES
+  maxBytes = IMAGE_MAX_BYTES
 ): Promise<LibraryImage> {
   const st = await stat(src).catch(() => null)
   if (!st?.isFile()) throw new Error('Not a regular file')
@@ -159,7 +160,7 @@ export async function removeImage(dir: string, pn: string): Promise<boolean> {
 export async function imageDataUrl(
   dir: string,
   pn: string,
-  maxBytes = DEFAULT_MAX_BYTES
+  maxBytes = IMAGE_MAX_BYTES
 ): Promise<string | null> {
   const p = await resolveForPart(dir, pn)
   if (!p) return null
