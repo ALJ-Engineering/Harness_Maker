@@ -2,7 +2,7 @@
  * `library put | show | search` — pure functions (wiring and output formatting are
  * Task 5's). Results are structured; problems are one string per line.
  */
-import { readFile, writeFile, mkdtemp, realpath, rename, rm } from 'fs/promises'
+import { readFile, writeFile, mkdtemp, realpath, rm } from 'fs/promises'
 import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, sep } from 'path'
@@ -17,6 +17,7 @@ import {
   removeDatasheet,
   writePart
 } from '../main/partsLibrary'
+import { renameWithRetry } from '../main/renameRetry'
 import { incompleteReasons, unreadableRecord } from './rails'
 import { openLibrary } from './session'
 
@@ -97,7 +98,7 @@ async function bytesOf(path: string): Promise<Buffer | null> {
 async function putBytes(path: string, bytes: Buffer): Promise<void> {
   const tmp = `${path}.${process.pid}.rollback.tmp`
   await writeFile(tmp, bytes)
-  await rename(tmp, path)
+  await renameWithRetry(tmp, path)
 }
 
 /**

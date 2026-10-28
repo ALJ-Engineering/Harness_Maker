@@ -54,6 +54,14 @@ npm run pack:win     # NSIS installer
 npm run pack:linux   # AppImage and .deb
 ```
 
+### Installing on Windows
+
+Run `Harness Editor-Setup-<version>.exe` from `release/`, or download it from the
+`harness-editor-windows-installer` artifact of a CI run. It installs for the current user, so no
+administrator rights are needed. The installer is not code-signed: the first time, Windows
+SmartScreen says "Windows protected your PC", and you choose **More info ▸ Run anyway**. App
+settings are kept in `%APPDATA%\harness-editor\settings.json`.
+
 ## Using the app
 
 1. **Set up a parts library (optional).** *Settings ▸ Parts library folder…* and pick or create a
@@ -85,7 +93,8 @@ Undo and redo (⌘Z / ⌘⇧Z, Ctrl on Windows and Linux) cover every edit.
 ### Printing at 1:1
 
 The drawing page must be printed at **100 % / actual size**, never "fit to page". Every drawing
-carries a 100 mm scale bar; measure it on the print before using it as a template.
+carries a 100 mm scale bar; measure it on the print before using it as a template. PDF viewers on
+Windows (Acrobat Reader, Edge) often default to *Fit*; set the page sizing to *Actual size*.
 
 ## Command-line tool
 
@@ -134,10 +143,13 @@ npm run typecheck    # TypeScript, main/preload and renderer
 npm run build        # typecheck and bundle to out/
 ```
 
+On Windows without Developer Mode, the three tests that need a file symlink report as skipped.
+
 Stack: Electron, React 19, TypeScript, React Flow for the canvas, Zustand and Immer for the
 document store. PDFs are rendered with Chromium's print engine so the 1:1 output is identical on
-every platform. `scripts/check-pdf-scale.sh <drawing-set.pdf> 1` measures the scale bar on an
-exported PDF (needs poppler and Python 3).
+every platform. `node scripts/check-pdf-scale.mjs <drawing-set.pdf> 1` measures the scale bar on an
+exported PDF. It needs poppler and Python 3 on PATH; on Windows, get poppler from MSYS2
+(`pacman -S mingw-w64-x86_64-poppler`) or Scoop (`scoop install poppler`).
 
 Further reading:
 

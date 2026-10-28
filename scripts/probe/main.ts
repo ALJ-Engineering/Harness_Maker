@@ -7,7 +7,8 @@
  * the save dialog. `scripts/probe-pdf-export.mjs` bundles it, runs it under
  * Electron, and then measures the result with `pdfinfo` + the 100 mm scale bar.
  *
- * Usage (under Electron):  probe.cjs <out.pdf> [paper] [orientation]
+ * Usage (under Electron):  probe.cjs [--] <out.pdf> [paper] [orientation]
+ * (the runner always passes `--`; see `probe-pdf-export.mjs` for why)
  * `paper` is A4 (default) | A3 | A2 | A1 | A0 | `Plotter:<lengthMm>` (a
  * 914 mm roll of that length) and applies to the 1:1 DRAWING page only — the BOM /
  * Wiring Table / Cutlist pages are always A4 landscape by design
@@ -80,7 +81,8 @@ app.on('window-all-closed', () => {})
 app
   .whenReady()
   .then(async () => {
-    const { out, sheet } = parseArgs(process.argv.slice(2))
+    const argv = process.argv.slice(2)
+    const { out, sheet } = parseArgs(argv[0] === '--' ? argv.slice(1) : argv)
     const doc = demoDocument()
     // Give the first connector a housing part number the fixture library has a
     // photo for, so exactly ONE picture block is planned and printed. The demo

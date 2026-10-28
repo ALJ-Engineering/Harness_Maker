@@ -11,6 +11,13 @@ mac:
   category: public.app-category.developer-tools
 win:
   target: [nsis]
+  artifactName: ${productName}-Setup-${version}.${ext}
+# Per-user install (no UAC prompt) with the wizard, so the folder can be changed.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
 linux:
   target: [AppImage, deb]
   category: Development

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, writeFile, readdir, symlink } from 'fs/promises'
+import { mkdtemp, rm, writeFile, readdir } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { SYMLINK_SKIP, trySymlink } from './testSymlink'
 import {
   ensureLibraryDirs, listParts, readPart, writePart, deletePart,
   datasheetPath, importDatasheet, removeDatasheet
@@ -112,10 +113,10 @@ describe('datasheets', () => {
     await writeFile(join(dir, 'datasheets', 'UP-1.PDF'), PDF)
     expect(await datasheetPath(dir, 'UP-1')).toBe(join(await realDir(), 'datasheets', 'UP-1.PDF'))
   })
-  it('a symlink out of the folder does not resolve', async () => {
+  it('a symlink out of the folder does not resolve', async ({ skip }) => {
     const outside = join(dir, 'outside.pdf')
     await writeFile(outside, PDF)
-    await symlink(outside, join(dir, 'datasheets', 'EVIL.pdf'))
+    if (!(await trySymlink(outside, join(dir, 'datasheets', 'EVIL.pdf')))) return skip(SYMLINK_SKIP)
     expect(await datasheetPath(dir, 'EVIL')).toBeNull()
   })
   it('a part number that sanitises to a path escape stays inside', async () => {
@@ -125,7 +126,8 @@ describe('datasheets', () => {
     const outside = await mkdtemp(join(tmpdir(), 'outside-'))
     try {
       await rm(join(dir, 'datasheets'), { recursive: true, force: true })
-      await symlink(outside, join(dir, 'datasheets'))
+      // A junction on Windows, so this one runs without Developer Mode (see testSymlink.ts).
+      expect(await trySymlink(outside, join(dir, 'datasheets'), 'dir')).toBe(true)
       await expect(importDatasheet(dir, 'A', await tmpPdf())).rejects.toThrow(/not writable/)
       expect(await readdir(outside)).toEqual([])
     } finally {

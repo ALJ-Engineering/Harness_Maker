@@ -218,7 +218,7 @@ internal/test renderer; there is no `Drawing (SVG)…` menu item.
 Chromium quantises the PDF page box to 1/300 in (0.24 pt), so an A4-landscape drawing page
 reports `841.92 × 594.96 pts`, not the nominal `841.89 × 595.28`. The residual *content*
 scale error is −0.011 % (≈0.1 mm per metre) — below paper dimensional stability and inside
-build tolerance. `scripts/check-pdf-scale.sh <drawing-set.pdf> [page]` measures the 100 mm
+build tolerance. `node scripts/check-pdf-scale.mjs <drawing-set.pdf> [page]` measures the 100 mm
 bar off a rasterised page and asserts `1181 px ± 3` at 300 dpi; point it at the drawing page,
 since the A4 document pages carry no bar. `node scripts/probe-pdf-export.mjs [outDir]
 [paper] [orientation]` (paper also `A0` and `Plotter:<lengthMm>`) drives the **real** export path headlessly under Electron and runs

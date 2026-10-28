@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtemp, mkdir, rm, writeFile, symlink, stat, utimes } from 'fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, stat, utimes } from 'fs/promises'
 import { tmpdir } from 'os'
 import { imageSize } from './imageSize'
+import { SYMLINK_SKIP, trySymlink } from './testSymlink'
 import { join } from 'path'
 import {
   sanitisePartNumber,
@@ -47,7 +48,7 @@ describe('partsImages', () => {
 
   it('imageHref encodes', () => expect(imageHref('A&B/C')).toBe('parts-image://img/A%26B%2FC'))
 
-  it('lists, imports, serves, removes, and guards paths', async () => {
+  it('lists, imports, serves, removes, and guards paths', async ({ skip }) => {
     const dir = await mkdtemp(join(tmpdir(), 'hi-'))
     const out = await mkdtemp(join(tmpdir(), 'ho-'))
     try {
@@ -84,11 +85,13 @@ describe('partsImages', () => {
       await mkdir(join(dir, 'sub'))
       await writeFile(join(dir, 'sub', 'deep.png'), PNG)
       expect(await resolveImageFile(dir, 'sub/deep.png')).toBeNull() // the library is flat
-      await symlink(join(out, 'src.png'), join(dir, 'LINK.png'))
-      expect(await resolveImageFile(dir, 'LINK.png')).toBeNull() // realpath escapes dir
 
       expect(await removeImage(dir, 'X_1')).toBe(true)
       expect(await removeImage(dir, 'X_1')).toBe(false)
+
+      // Last, because it may skip the rest of the test (see testSymlink.ts).
+      if (!(await trySymlink(join(out, 'src.png'), join(dir, 'LINK.png')))) return skip(SYMLINK_SKIP)
+      expect(await resolveImageFile(dir, 'LINK.png')).toBeNull() // realpath escapes dir
     } finally {
       await rm(dir, { recursive: true, force: true })
       await rm(out, { recursive: true, force: true })

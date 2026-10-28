@@ -29,15 +29,14 @@ and drawing geometry are separate, linked only by stable ids** (see `docs/harnes
 ## Getting started
 
 ```bash
-export PATH="/opt/homebrew/bin:$PATH"   # node is Homebrew-only on this machine
 npm run dev        # Electron app with HMR
 npm test           # vitest, node env, *.test.ts only (no DOM, no .test.tsx)
 npm run typecheck  # tsc on BOTH tsconfigs (node = main/preload/shared, web = renderer/shared)
 npm run build      # typecheck + bundle to out/
 
-# 1:1 gate — needs poppler + python3 on PATH
+# 1:1 gate — needs poppler + Python 3 on PATH (Node, not bash, so both run on Windows too)
 node scripts/probe-pdf-export.mjs [outDir] [paper] [orientation]   # real export of the demo doc
-scripts/check-pdf-scale.sh <drawing-set.pdf> 1                     # measure the 100 mm bar
+node scripts/check-pdf-scale.mjs <drawing-set.pdf> 1               # measure the 100 mm bar
 ```
 
 - Test env is `environment: 'node'` — no DOM, no `window.api`, so UI components / IPC /
@@ -412,7 +411,7 @@ document Chromium happens to be printing, and the hidden print window defines no
 so an undefined `var()` falls back to the CSS **initial** value for that property. Measured: a
 `fill` falls back to BLACK (the text survives but changes colour), a `stroke` falls back to
 **`none`** and the mark simply disappears — i.e. a line can vanish from a manufacturing drawing
-with every other check green. `scripts/check-pdf-scale.sh` does not notice (the scale bar measures
+with every other check green. `scripts/check-pdf-scale.mjs` does not notice (the scale bar measures
 geometry) and neither did any unit test until this rule was given one.
 
 **The guard is `drawingSet.test.ts`'s `no theme token reaches the print path`**, two tests:

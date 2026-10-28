@@ -46,7 +46,7 @@ export function TopChrome({
         <button
           className="chip chip--btn"
           onClick={onSearchParts}
-          title="Search the parts library (⌘L)"
+          title={`Search the parts library (${window.api.platform === 'darwin' ? '⌘L' : 'Ctrl+L'})`}
         >
           <span className="chip__glyph">⌕</span>
           Parts

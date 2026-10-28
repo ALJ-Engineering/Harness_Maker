@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure the 100 mm scale-check bar in a 300 dpi greyscale PGM of one PDF page.
 
-Called by scripts/check-pdf-scale.sh. Python 3 stdlib only (no PIL).
+Called by scripts/check-pdf-scale.mjs. Python 3 stdlib only (no PIL).
 
 The bar (src/shared/print/template.ts, `<g class="scale-bar-page">`) is drawn in
 PAGE space on the 1:1 drawing page, in the info strip along the bottom of the sheet: a

@@ -4,6 +4,8 @@
 # then starts Electron on the built output. Double-click entry point is
 # "Harness Editor.app" (a thin wrapper that execs this script), so launch logic
 # stays in git. Logs: /tmp/harness-editor-launch.log
+# macOS only (zsh, osascript, Homebrew). On Windows, install the app built by
+# `npm run pack:win` instead.
 set -u
 export PATH="/opt/homebrew/bin:$PATH"
 
