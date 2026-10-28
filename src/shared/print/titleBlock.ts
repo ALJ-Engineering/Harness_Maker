@@ -36,6 +36,47 @@ function labelValueCell(x: number, y: number, w: number, h: number, label: strin
   return parts.join('')
 }
 
+/** Sizes (pt) a wrapped value steps down through, largest first, until it fits its cell. */
+const WRAP_SIZES_PT = [8, 7, 6, 5]
+/** Top (mm below the cell's top) of the room a wrapped value has, clear of the label. */
+const WRAP_TOP = 4.2
+
+/** `text` word-wrapped to `maxWMm`, keeping the line breaks typed into it. */
+function wrapLines(text: string, fontMm: number, maxWMm: number): string[] {
+  return text.split('\n').flatMap((para) => wrapText(para, fontMm, maxWMm, Infinity))
+}
+
+/**
+ * Like `labelValueCell`, but a value too long for one line wraps instead of
+ * being clipped: at 8 pt if it fits, else stepping down to 5 pt, and only then
+ * clipped with an ellipsis. The lines sit at the bottom of the cell, so one
+ * line lands where `labelValueCell` puts it.
+ */
+function wrappedValueCell(x: number, y: number, w: number, h: number, label: string, value: string | undefined): string {
+  const parts: string[] = []
+  parts.push(`<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="none" stroke="#888" stroke-width="0.2"/>`)
+  parts.push(svgText(x + 1.5, y + 3.2, label, { size: 5 * PT, fill: '#666' }))
+  const maxW = w - 3
+  const lastBaseline = y + h - 2
+  let size = 0
+  let lineH = 0
+  let lines: string[] = []
+  for (const pt of WRAP_SIZES_PT) {
+    size = pt * PT
+    lineH = size * 1.2
+    // Lines that fit between WRAP_TOP and the last baseline, cap height 0.72 em.
+    const room = Math.max(1, Math.floor((lastBaseline - y - WRAP_TOP - 0.72 * size) / lineH) + 1)
+    lines = wrapLines(value ?? '', size, maxW)
+    if (lines.length <= room) break
+    // Still too long at this size: the rest goes on the last line, clipped (it's wider than one line).
+    lines = [...lines.slice(0, room - 1), fitText(lines.slice(room - 1).join(' '), size, maxW)]
+  }
+  lines.forEach((ln, i) => {
+    parts.push(svgText(x + 1.5, lastBaseline - (lines.length - 1 - i) * lineH, ln, { size, weight: 'bold' }))
+  })
+  return parts.join('')
+}
+
 /** Renders the title block (Title/PN/Description/Revision, approvals grid, logo, confidentiality). */
 export function renderTitleBlock(x: number, y: number, tb: TitleBlock | undefined, branding: PrintBranding): string {
   const parts: string[] = []
@@ -44,7 +85,7 @@ export function renderTitleBlock(x: number, y: number, tb: TitleBlock | undefine
 
   // Left column: Title over Description.
   parts.push(labelValueCell(x, y, COL_TITLE_W, HALF_H, 'Title', tb?.title))
-  parts.push(labelValueCell(x, y + HALF_H, COL_TITLE_W, HALF_H, 'Description', tb?.description))
+  parts.push(wrappedValueCell(x, y + HALF_H, COL_TITLE_W, HALF_H, 'Description', tb?.description))
 
   // Middle-left column: Part Number over Revision.
   const pnX = x + COL_TITLE_W
