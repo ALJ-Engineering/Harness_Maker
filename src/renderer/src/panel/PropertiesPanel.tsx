@@ -26,6 +26,7 @@ import type {
 import { Field, TextEdit, NumberEdit, SelectEdit } from './fields'
 import { PictureRow } from './PictureRow'
 import { PartPicker } from './PartPicker'
+import { ColorPicker } from './ColorPicker'
 import { DocumentProperties } from './DocumentProperties'
 import { primaryPartNumber } from '@shared/model/bodyParts'
 import type { PartImageLibrary } from '../usePartImages'
@@ -51,6 +52,7 @@ import {
 } from '@shared/model/treatments'
 import { LABEL_KIND_LABELS } from '@shared/model/formboard'
 import { sortedCavities, natCompare } from '@shared/model/anchors'
+import { colorName } from '@shared/model/colors'
 
 export type Selection =
   | { kind: 'none' }
@@ -536,7 +538,7 @@ function WireEditor({
   const setWireLengthOverride = useHarnessStore((st) => st.setWireLengthOverride)
   const setWireAllowance = useHarnessStore((st) => st.setWireAllowance)
 
-  const stripes = (wire.color.stripes ?? []).join(', ')
+  const stripes = wire.color.stripes ?? []
 
   return (
     <div className="panel__section">
@@ -552,27 +554,53 @@ function WireEditor({
       <Field label="Colour (IEC)">
         <span className="pf__colorrow">
           <span className="pf__swatch" style={{ background: screenStroke(wire.color.base, theme) }} />
-          <TextEdit
+          <ColorPicker
             value={wire.color.base}
+            theme={theme}
             placeholder="RD, BK, BU…"
-            onCommit={(v) => set((w) => (w.color.base = v.toUpperCase()))}
+            onCommit={(code) => set((w) => (w.color.base = code))}
           />
         </span>
       </Field>
+      {/* The picker comes FIRST in the <label>: clicking the row's label text
+          activates the label's first control, which must not be a chip's ×. */}
       <Field label="Stripes">
-        <TextEdit
-          value={stripes}
-          placeholder="WH, GN"
-          onCommit={(v) =>
-            set((w) => {
-              const arr = v
-                .split(',')
-                .map((s) => s.trim().toUpperCase())
-                .filter(Boolean)
-              w.color.stripes = arr.length ? arr : undefined
-            })
-          }
-        />
+        <span className="pf__stripes">
+          <ColorPicker
+            value=""
+            adder
+            theme={theme}
+            placeholder={stripes.length ? 'add a stripe…' : 'none: pick to add'}
+            onCommit={(code) =>
+              set((w) => {
+                const cur = w.color.stripes ?? []
+                if (!cur.includes(code)) w.color.stripes = [...cur, code]
+              })
+            }
+          />
+          {stripes.length > 0 && (
+            <span className="pf__chips">
+              {stripes.map((code, i) => (
+                <span key={code} className="pf__chip" title={colorName(code)}>
+                  <span className="pf__swatch" style={{ background: screenStroke(code, theme) }} />
+                  {code}
+                  <button
+                    className="pf__chip-del"
+                    title={`Remove the ${colorName(code)} stripe`}
+                    onClick={() =>
+                      set((w) => {
+                        const rest = (w.color.stripes ?? []).filter((_, j) => j !== i)
+                        w.color.stripes = rest.length ? rest : undefined
+                      })
+                    }
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
       </Field>
 
       <Field label="Gauge">

@@ -702,6 +702,53 @@ textarea.pf__input {
   border: 1px solid var(--chip-border);
   border-radius: 3px;
 }
+/* ColorPicker: fills the colour row; its list rows lead with a smaller swatch. */
+.pf__colorrow .pp {
+  flex: 1;
+  min-width: 0;
+}
+.pp__row .pf__swatch {
+  width: 12px;
+  height: 12px;
+  align-self: center;
+}
+/* Stripes: the add-a-stripe picker, then one chip per stripe with its ×. */
+.pf__stripes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pf__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pf__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px 1px 4px;
+  border: 1px solid var(--chip-border);
+  border-radius: 5px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.pf__chip .pf__swatch {
+  width: 12px;
+  height: 12px;
+}
+.pf__chip-del {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.pf__chip-del:hover {
+  color: var(--sev-error-text);
+}
 
 /* The pin table: a --table-bg plate with --table-line row rules and a muted
    position column, holding the same editable cells it always had.

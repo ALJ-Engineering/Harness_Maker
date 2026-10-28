@@ -57,3 +57,61 @@ export function colorName(base: string): string {
   if (base.startsWith('#')) return base
   return IEC_NAME[base.toUpperCase()] ?? base
 }
+
+/** Every IEC colour code the app draws, in picker order: `{ code: 'BK', name: 'Black' }`. */
+export const IEC_COLORS: readonly { code: string; name: string }[] = Object.entries(IEC_NAME).map(
+  ([code, name]) => ({ code, name })
+)
+
+/** True for a listed IEC code (any case) or a valid `#hex`; anything else draws as grey. */
+export function isKnownColor(base: string): boolean {
+  return base.startsWith('#') ? HEX_RE.test(base) : base.toUpperCase() in IEC_NAME
+}
+
+/**
+ * Common non-IEC abbreviations (US / SAE style) → the IEC code, so a search for
+ * "BLK" finds Black. Search only: the stored code is always the IEC one.
+ */
+const ALIASES: Record<string, string> = {
+  BLK: 'BK',
+  BRN: 'BN',
+  RED: 'RD',
+  ORN: 'OG',
+  ORG: 'OG',
+  YEL: 'YE',
+  GRN: 'GN',
+  BLU: 'BU',
+  VIO: 'VT',
+  PUR: 'VT',
+  GRY: 'GY',
+  GRA: 'GY',
+  WHT: 'WH',
+  PNK: 'PK',
+  TRQ: 'TQ',
+  SIL: 'SR',
+  GLD: 'GD'
+}
+
+/**
+ * The colour picker's rows for a typed query: every colour for an empty query,
+ * else those whose code, alias or name matches — exact code/alias first, then
+ * code/alias prefix, then name prefix, then name substring, each in
+ * `IEC_COLORS` order. "BLK" → Black; "gn" → Green, Green/Yellow; "#f00" → none.
+ */
+export function searchColors(query: string): { code: string; name: string }[] {
+  const q = query.trim().toUpperCase()
+  if (!q) return [...IEC_COLORS]
+  const rank = ({ code, name }: { code: string; name: string }): number => {
+    const keys = [code, ...Object.keys(ALIASES).filter((a) => ALIASES[a] === code)]
+    const n = name.toUpperCase()
+    if (keys.includes(q)) return 0
+    if (keys.some((k) => k.startsWith(q))) return 1
+    if (n.startsWith(q)) return 2
+    if (n.includes(q)) return 3
+    return -1
+  }
+  return IEC_COLORS.map((c, i) => ({ c, i, r: rank(c) }))
+    .filter((x) => x.r >= 0)
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.c)
+}
