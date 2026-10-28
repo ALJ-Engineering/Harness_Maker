@@ -941,8 +941,20 @@ textarea.pf__input {
   padding: 3px 8px 3px 18px;
   flex-direction: row-reverse;
 }
+/* "Nearest" connector: a handle on both edges of every row, the position between them. */
+.node--exit-both .cavity {
+  padding: 3px 18px;
+}
 .cavity__handle {
   background: var(--ink-soft);
+}
+/* A terminal's or splice's sides no wire uses (FourSideHandles): still there to
+   start or drop a wire on, but shown only while the body is hovered. */
+.react-flow__handle.handle--spare {
+  opacity: 0;
+}
+.react-flow__node:hover .react-flow__handle.handle--spare {
+  opacity: 1;
 }
 
 /* Cavity status: populated = normal; plugged = grayed out;

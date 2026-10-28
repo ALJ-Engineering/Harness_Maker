@@ -732,9 +732,12 @@ function BodyPictureRow({
   )
 }
 
-const EXIT_SIDE_SCHEMATIC_OPTS: { value: 'left' | 'right'; label: string }[] = [
+// 'nearest': each wire leaves its pin row on the side facing its other end —
+// for inline parts (a fuse, a diode, a relay) wired from both sides.
+const EXIT_SIDE_SCHEMATIC_OPTS: { value: 'left' | 'right' | 'nearest'; label: string }[] = [
   { value: 'left', label: 'left' },
-  { value: 'right', label: 'right' }
+  { value: 'right', label: 'right' },
+  { value: 'nearest', label: 'nearest (inline parts)' }
 ]
 
 function ConnectorEditor({
@@ -750,7 +753,7 @@ function ConnectorEditor({
   conn: Connector
   doc: HarnessDocument
   edit: Edit
-  setExitSide: (connectorId: string, side: 'left' | 'right' | 'top' | 'bottom') => void
+  setExitSide: (connectorId: string, side: 'left' | 'right' | 'top' | 'bottom' | 'nearest') => void
   viewMode: 'schematic' | 'formboard'
   parts: PartImageLibrary
   library: PartsLibrary

@@ -37,4 +37,9 @@ describe('reconnectOutcome', () => {
     expect(reconnectOutcome(edge, conn('sp', 'sp:sp', 'ft', 'ft:ft'))).toBeNull()
     expect(reconnectOutcome(edge, conn('conn-x1', 'cav:cav-x1-1', 'x', 'bogus:1'))).toBeNull()
   })
+
+  it('another side of the same terminal is the same endpoint: no move', () => {
+    const toRing: Edge = { ...edge, target: 'ft-1', targetHandle: 'ft:ft-1|left' }
+    expect(reconnectOutcome(toRing, conn('conn-x1', 'cav:cav-x1-1', 'ft-1', 'ft:ft-1|bottom'))).toBeNull()
+  })
 })

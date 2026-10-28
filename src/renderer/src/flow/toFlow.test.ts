@@ -99,7 +99,8 @@ describe('documentToFlow — splices', () => {
 
     const w = edges.find((e) => e.id === 'wire-sp')!
     expect(w.target).toBe('sp-1')
-    expect(w.targetHandle).toBe('sp:sp-1')
+    // X1 pin 3 lies up and to the left of the splice, more to the side: its left.
+    expect(w.targetHandle).toBe('sp:sp-1|left')
   })
 })
 

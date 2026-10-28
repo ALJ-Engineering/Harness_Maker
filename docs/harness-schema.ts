@@ -217,7 +217,7 @@ export interface Placement {
   pos: Vec2;
   schematicPos?: Vec2;     // schematic diagram position; falls back to `pos` if unset
   rotation?: Degrees;      // schematic only — a formboard dot has no rotation
-  schematicExitSide?: "left" | "right" | "top" | "bottom"; // schematic pin exit side; falls back to right
+  schematicExitSide?: "left" | "right" | "top" | "bottom" | "nearest"; // schematic pin exit side; falls back to right. "nearest": each wire leaves its pin row on the side (left/right) facing its other end — inline parts
   schematicPinOrderReversed?: boolean; // schematic only: mirror the symbol top↔bottom (last pin on top); absent = natural order (0.5.2)
 }
 

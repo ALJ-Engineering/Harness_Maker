@@ -22,6 +22,8 @@ describe('schematic handles', () => {
   it('every wire end on every schematic body is a source handle', () => {
     const doc = demoDocument()
     doc.splices.push({ id: 'sp-1', designator: 'SP1', kind: 'butt' })
+    // X2 exits "nearest": a handle on both sides of each of its rows.
+    doc.placements.find((p) => p.refId === 'conn-x2')!.schematicExitSide = 'nearest'
     const { nodes } = documentToFlow(doc)
     expect(new Set(nodes.map((n) => n.type))).toEqual(new Set(['connector', 'freeTerminal', 'splice']))
 
@@ -37,8 +39,14 @@ describe('schematic handles', () => {
     const handles = [...html.matchAll(/<div[^>]*data-handleid="([^"]*)"[^>]*class="([^"]*)"/g)].map(
       ([, id, cls]) => ({ id, type: cls.split(' ').find((c) => c === 'source' || c === 'target') })
     )
+    // A terminal and a splice have a handle on every side (`FourSideHandles`).
     expect(handles.map((h) => h.id)).toEqual(
-      expect.arrayContaining(['cav:cav-x1-1', 'ft:ft-bplus', 'sp:sp-1'])
+      expect.arrayContaining([
+        'cav:cav-x1-1',
+        'cav:cav-x2-a|left',
+        'cav:cav-x2-a|right',
+        ...['left', 'top', 'right', 'bottom'].flatMap((side) => [`ft:ft-bplus|${side}`, `sp:sp-1|${side}`])
+      ])
     )
     expect(handles.filter((h) => h.type !== 'source')).toEqual([])
   })

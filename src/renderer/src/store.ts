@@ -410,7 +410,7 @@ export interface HarnessState {
    * one dot there (schema 0.4.0). Updates (or creates) the placement for the
    * connector with `refId === connectorId`. One atomic undoable edit.
    */
-  setExitSide: (connectorId: Id, side: 'left' | 'right' | 'top' | 'bottom') => void
+  setExitSide: (connectorId: Id, side: 'left' | 'right' | 'top' | 'bottom' | 'nearest') => void
 
   /**
    * Mirror a connector's schematic symbol top↔bottom (`true`: last pin on top)
