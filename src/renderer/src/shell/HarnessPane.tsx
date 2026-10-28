@@ -43,6 +43,7 @@ import {
 import { documentToFormboard } from '../flow/toFormboard'
 import { HARNESS_NODE_TYPES, HARNESS_EDGE_TYPES } from '../flow/registry'
 import { dragOutcome } from './dragGesture'
+import { reconnectOutcome } from './reconnectGesture'
 import { nearestBody } from '../flow/nearestBody'
 import { nodeCentre } from '../flow/nodeCentre'
 import type { PartImageLibrary } from '../usePartImages'
@@ -188,6 +189,7 @@ function HarnessPaneInner({
 }: HarnessPaneProps & { handleRef: ForwardedRef<HarnessPaneHandle> }): React.JSX.Element {
   const commitGesture = useHarnessStore((s) => s.commitGesture)
   const addWire = useHarnessStore((s) => s.addWire)
+  const reconnectWire = useHarnessStore((s) => s.reconnectWire)
   const removeElements = useHarnessStore((s) => s.removeElements)
   const addConnector = useHarnessStore((s) => s.addConnector)
   const addFreeTerminal = useHarnessStore((s) => s.addFreeTerminal)
@@ -492,6 +494,17 @@ function HarnessPaneInner({
     [addWire, mode]
   )
 
+  // Schematic: drag a wire's end off its pin and drop it on another pin,
+  // terminal or splice — the wire keeps everything but that end. Dropped
+  // anywhere else, the end snaps back (React Flow's default).
+  const onReconnect = useCallback(
+    (edge: Edge, conn: Connection) => {
+      const out = reconnectOutcome(edge, conn)
+      if (out) reconnectWire(edge.id, out.end, out.to)
+    },
+    [reconnectWire]
+  )
+
   // Reject only a self-loop on the exact same handle; everything else is valid.
   const isValidConnection = useCallback(
     (c: Connection | Edge) => !(c.source === c.target && c.sourceHandle === c.targetHandle),
@@ -589,6 +602,8 @@ function HarnessPaneInner({
           boxSelectingRef.current = false
         }}
         onConnect={onConnect}
+        // Formboard edges are limbs, not wires: they never reconnect.
+        onReconnect={mode === 'schematic' ? onReconnect : undefined}
         isValidConnection={isValidConnection}
         onDragOver={(e) => {
           // Only claim the drop when it is a file drag on the formboard;

@@ -972,6 +972,114 @@ describe('removeWire prunes a dangling bundle-targeted sleeving', () => {
   })
 })
 
+describe('reconnectWire (drag a wire end to another endpoint)', () => {
+  beforeEach(() => reset())
+
+  /** w1 a1→P→sPR→R→b1 and w2 a2→P→sPR→R→b2, bundled over sPR; w1 is red 1.5 mm². */
+  function bundled(): void {
+    s().applyEdit((d) => {
+      d.branchPoints.push({ id: 'P', pos: { x: 40, y: 0 } }, { id: 'R', pos: { x: 80, y: 0 } })
+      d.segments.push({ id: 'sPR', from: { type: 'branch', branchId: 'P' }, to: { type: 'branch', branchId: 'R' } })
+      for (const [w, a, b] of [['w1', 'a1', 'b1'], ['w2', 'a2', 'b2']]) {
+        d.wires.push({ id: w, ends: [{ type: 'cavity', cavityId: a }, { type: 'cavity', cavityId: b }], gauge: { value: 1.5, unit: 'mm2' }, color: { base: 'RD' } })
+        d.segments.push(
+          { id: `${a}P`, from: { type: 'body', refId: a }, to: { type: 'branch', branchId: 'P' } },
+          { id: `R${b}`, from: { type: 'branch', branchId: 'R' }, to: { type: 'body', refId: b } }
+        )
+        d.wireRoutes.push({ wireId: w, path: [`${a}P`, 'sPR', `R${b}`] })
+      }
+      d.bundles.push({ id: 'bnd', segmentIds: ['sPR'], memberWireIds: ['w1', 'w2'] })
+      // A second cavity on b1's connector, for a move that stays on one body.
+      d.connectors.find((c) => c.id === 'b1')!.cavities.push({ id: 'b1-2', position: '2', status: 'populated' })
+    })
+  }
+  const route = (w: string) => s().doc.wireRoutes.find((r) => r.wireId === w)?.path
+  const w1 = () => s().doc.wires.find((w) => w.id === 'w1')!
+
+  it('to another cavity of the same connector: only the end changes, the route stays, one undo step', () => {
+    bundled()
+    const before = s().past.length
+    const routeBefore = route('w1')
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'b1-2' })).toBe(true)
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1-2' })
+    expect(w1().color).toEqual({ base: 'RD' })
+    expect(w1().gauge).toEqual({ value: 1.5, unit: 'mm2' })
+    expect(route('w1')).toEqual(routeBefore)
+    expect(s().past.length).toBe(before + 1)
+    s().undo()
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1' })
+  })
+
+  it('to another connector: only the last leg changes, so the wire stays in its bundle', () => {
+    bundled()
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'c' })).toBe(true)
+    const path = route('w1')!
+    expect(path.slice(0, 2)).toEqual(['a1P', 'sPR'])
+    const leg = s().doc.segments.find((g) => g.id === path[2])!
+    expect([leg.from, leg.to]).toEqual([{ type: 'branch', branchId: 'R' }, { type: 'body', refId: 'c' }])
+    // The bundle still carries both wires; the old leg into b1 had no other wire and is gone.
+    expect(s().doc.bundles.map((b) => [...b.memberWireIds].sort())).toEqual([['w1', 'w2']])
+    expect(s().doc.segments.some((g) => g.id === 'Rb1')).toBe(false)
+    expect(routeConnected(s().doc, 'w1')).toBe(true)
+    s().undo()
+    expect(route('w1')).toEqual(['a1P', 'sPR', 'Rb1'])
+  })
+
+  it('moving the first end works the same way', () => {
+    bundled()
+    expect(s().reconnectWire('w1', 0, { type: 'cavity', cavityId: 'c' })).toBe(true)
+    const path = route('w1')!
+    expect(path.slice(1)).toEqual(['sPR', 'Rb1'])
+    const leg = s().doc.segments.find((g) => g.id === path[0])!
+    expect([leg.from, leg.to]).toContainEqual({ type: 'body', refId: 'c' })
+    expect([leg.from, leg.to]).toContainEqual({ type: 'branch', branchId: 'P' })
+  })
+
+  it("a label on the wire's old leg is re-anchored onto its new route", () => {
+    bundled()
+    s().applyEdit((d) => {
+      d.labels.push({ id: 'L', target: { type: 'wire', wireId: 'w1' }, kind: 'wireMarker', text: 'M', pos: { x: 0, y: 0 }, anchor: { segmentId: 'Rb1', fraction: 0.5 } })
+    })
+    s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'c' })
+    const label = s().doc.labels.find((l) => l.id === 'L')!
+    expect(route('w1')).toContain(label.anchor!.segmentId)
+  })
+
+  it('both ends on one body afterwards: no route, as for a jumper, and the bundle dissolves', () => {
+    bundled()
+    s().applyEdit((d) => {
+      d.connectors.find((c) => c.id === 'a1')!.cavities.push({ id: 'a1-2', position: '2', status: 'populated' })
+    })
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'a1-2' })).toBe(true)
+    expect(route('w1')).toBeUndefined()
+    expect(s().doc.bundles).toHaveLength(0)
+  })
+
+  it('a wire without a route gets the direct one', () => {
+    const w = s().addWire({ type: 'cavity', cavityId: 'x' }, { type: 'cavity', cavityId: 'y' })
+    s().applyEdit((d) => {
+      d.wireRoutes = d.wireRoutes.filter((r) => r.wireId !== w)
+    })
+    expect(s().reconnectWire(w, 1, { type: 'cavity', cavityId: 'z' })).toBe(true)
+    const path = route(w)!
+    expect(path).toHaveLength(1)
+    const seg = s().doc.segments.find((g) => g.id === path[0])!
+    expect([seg.from, seg.to]).toEqual([{ type: 'body', refId: 'x' }, { type: 'body', refId: 'z' }])
+  })
+
+  it('refuses, with no history entry, the same end, the other end, a missing target or a shield', () => {
+    bundled()
+    const before = s().past.length
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'b1' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'a1' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'nope' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'shield', cableId: 'cab', end: 'a' })).toBe(false)
+    expect(s().reconnectWire('nope', 1, { type: 'cavity', cavityId: 'c' })).toBe(false)
+    expect(s().past.length).toBe(before)
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1' })
+  })
+})
+
 describe('disconnectWireAtBranch store action', () => {
   beforeEach(() => reset())
 

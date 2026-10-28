@@ -15,6 +15,7 @@ import type {
   LabelKind,
   PartRef,
   PictureView,
+  RouteNode,
   SheetConfig,
   TitleBlock
 } from '@shared/model/schema'
@@ -41,7 +42,7 @@ import {
 } from '@shared/model/rescale'
 import { incidentSegments, isSelfLoopSegment } from '@shared/model/topology'
 import { isValidLengthMm, routeNodeKey } from '@shared/model/geometry'
-import { bodyKey, bodyNode, endpointBodyId } from '@shared/model/endpoints'
+import { bodyKey, bodyNode, endpointBodyId, sameEndpoint } from '@shared/model/endpoints'
 import type { Repair } from '@shared/model/reconcile'
 // One definition of "identity view" for the loader, the store and the renderer.
 import { isIdentityView, normaliseView } from '@shared/print/picture'
@@ -238,6 +239,16 @@ export interface HarnessState {
 
   /** Create a wire between two endpoints (undoable). Returns the new wire id. */
   addWire: (a: Endpoint, b: Endpoint) => Id
+  /**
+   * Move one end of a wire to another endpoint — the schematic's drag of a
+   * wire end onto another pin, terminal or splice — as ONE undoable edit. The
+   * wire keeps its id, colour, gauge, part, labels and cable membership. On the
+   * formboard only the leg into the moved end changes (`relegRoute`), so a wire
+   * that rides a bundle keeps riding it. Refused (false, no history entry) for
+   * a missing wire or target, a shield end on either side, the end it already
+   * has, or the wire's other end (a wire from a point to itself).
+   */
+  reconnectWire: (wireId: Id, end: 0 | 1, to: Endpoint) => boolean
   /**
    * Instantiate a library cable record as a Cable plus one core Wire per entry
    * (gauge/colour from the record, `cableId` set) and, optionally, the drain
@@ -563,16 +574,90 @@ function existingOrNewSegment(
   bb: Id,
   newSegId: Id
 ): Id {
-  const ka = bodyKey(ba)
-  const kb = bodyKey(bb)
+  return existingOrNewSegmentBetween(d, bodyNode(ba), bodyNode(bb), newSegId)
+}
+
+/** `existingOrNewSegment` between any two route nodes: a body or a branch point. */
+function existingOrNewSegmentBetween(
+  d: Draft<HarnessDocument>,
+  a: RouteNode,
+  b: RouteNode,
+  newSegId: Id
+): Id {
+  const ka = routeNodeKey(a)
+  const kb = routeNodeKey(b)
   const existing = d.segments.find((sg) => {
     const f = routeNodeKey(sg.from)
     const t = routeNodeKey(sg.to)
     return (f === ka && t === kb) || (f === kb && t === ka)
   })
   if (existing) return existing.id
-  d.segments.push({ id: newSegId, from: bodyNode(ba), to: bodyNode(bb) })
+  d.segments.push({ id: newSegId, from: a, to: b })
   return newSegId
+}
+
+/**
+ * The formboard half of `reconnectWire`: one end of the wire moved from body
+ * `oldBody` to `newBody`, and `farBody` owns the end that stayed. Only the leg
+ * into the moved end changes — the route's end segment that ran into `oldBody`
+ * is swapped for one from the same node (a branch point, or the far body) to
+ * `newBody` — so a wire riding a bundle keeps riding it. Both ends on one body
+ * now: no route (a jumper, as addWire makes it). No route before, or one that
+ * does not end at `oldBody`: the direct body-to-body route addWire would give.
+ */
+function relegRoute(
+  d: Draft<HarnessDocument>,
+  wireId: Id,
+  farBody: Id | null,
+  oldBody: Id | null,
+  newBody: Id,
+  segId: Id
+): void {
+  const ri = d.wireRoutes.findIndex((r) => r.wireId === wireId)
+  if (!farBody || farBody === newBody) {
+    if (ri >= 0) d.wireRoutes.splice(ri, 1)
+    return
+  }
+  const route = ri >= 0 ? d.wireRoutes[ri] : undefined
+  const oldKey = oldBody ? bodyKey(oldBody) : null
+  // The node a route-end segment leaves the old body from, or null if it does not touch it.
+  const legStart = (sid: Id): RouteNode | null => {
+    const sg = d.segments.find((x) => x.id === sid)
+    if (!sg || !oldKey) return null
+    return routeNodeKey(sg.to) === oldKey ? sg.from : routeNodeKey(sg.from) === oldKey ? sg.to : null
+  }
+  const path = route?.path ?? []
+  const idx =
+    path.length === 0 ? -1 : legStart(path[path.length - 1]) ? path.length - 1 : legStart(path[0]) ? 0 : -1
+  if (!route || idx < 0) {
+    const direct = [existingOrNewSegment(d, farBody, newBody, segId)]
+    if (route) route.path = direct
+    else d.wireRoutes.push({ wireId, path: direct })
+    return
+  }
+  route.path[idx] = existingOrNewSegmentBetween(d, legStart(path[idx])!, bodyNode(newBody), segId)
+}
+
+/**
+ * After `relegRoute`: what is attached to the wire follows its NEW route. Its
+ * sleeving and the twists it is in keep only segments it still runs along
+ * (`healSpans` then trims or drops them), and a label of its anchored off the
+ * route is re-anchored on it (or freed).
+ */
+function fitWireTreatmentsToRoute(d: Draft<HarnessDocument>, wireId: Id): void {
+  const onRoute = new Set(d.wireRoutes.find((r) => r.wireId === wireId)?.path ?? [])
+  for (const sl of d.sleeving)
+    if (sl.target.type === 'wire' && sl.target.wireId === wireId)
+      sl.span.segmentIds = sl.span.segmentIds.filter((sid) => onRoute.has(sid))
+  for (const tw of d.twists)
+    if (tw.wireIds.includes(wireId)) tw.span.segmentIds = tw.span.segmentIds.filter((sid) => onRoute.has(sid))
+  for (const l of d.labels) {
+    if (l.target.type !== 'wire' || l.target.wireId !== wireId || !l.anchor || onRoute.has(l.anchor.segmentId))
+      continue
+    const a = defaultAnchor(d, l.target)
+    if (a) l.anchor = a
+    else delete l.anchor
+  }
 }
 
 /**
@@ -662,6 +747,16 @@ function removeWiresFromDraft(d: Draft<HarnessDocument>, ids: Id[]): void {
         w.cableId === cab.id || w.ends.some((e) => e.type === 'shield' && e.cableId === cab.id)
     )
   })
+  gcLayout(d, hadSpanSegments)
+}
+
+/**
+ * The layout clean-up after wires left segments (removed, or re-routed by
+ * `reconnectWire`), run once per edit: bundle resync → segment GC → span heal
+ * → branch-point GC → dangling-label prune → anchor reconcile.
+ * `hadSpanSegments` is `spansWithSegments(d)` from BEFORE the edit.
+ */
+function gcLayout(d: Draft<HarnessDocument>, hadSpanSegments: Set<string>): void {
   // Re-sync bundle entities from the post-removal routing topology BEFORE
   // the segment GC, so a shared limb that just dropped to one wire stops
   // being a bundle. syncBundles also prunes any sleeve/label that targeted
@@ -1002,6 +1097,28 @@ export const useHarnessStore = create<HarnessState>()(
         )
       })
       return id
+    },
+
+    reconnectWire: (wireId, end, to) => {
+      const doc = get().doc
+      const w = doc.wires.find((x) => x.id === wireId)
+      if (!w || to.type === 'shield' || w.ends[end].type === 'shield') return false
+      const newBody = endpointBodyId(doc, to)
+      if (!newBody || sameEndpoint(to, w.ends[end]) || sameEndpoint(to, w.ends[end === 0 ? 1 : 0])) return false
+      const oldBody = endpointBodyId(doc, w.ends[end])
+      const segId = newId()
+      get().applyEdit((d) => {
+        const dw = d.wires.find((x) => x.id === wireId)!
+        dw.ends[end] = to
+        // Another cavity of the same connector (or the same body otherwise):
+        // the formboard route is unchanged.
+        if (oldBody === newBody) return
+        const hadSpanSegments = spansWithSegments(d)
+        relegRoute(d, wireId, endpointBodyId(d, dw.ends[end === 0 ? 1 : 0]), oldBody, newBody, segId)
+        fitWireTreatmentsToRoute(d, wireId)
+        gcLayout(d, hadSpanSegments)
+      })
+      return true
     },
 
     addCableFromPart: (part, name, cores, drain) => {
