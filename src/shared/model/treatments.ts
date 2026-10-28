@@ -1,4 +1,4 @@
-import type { HarnessDocument, Id, Vec2, LabelTarget, Segment } from './schema'
+import type { HarnessDocument, Id, Vec2, Label, LabelTarget, Segment } from './schema'
 import { resolveNodePos, routeNodeKey } from './geometry'
 
 /** Ordered segment ids of a wire's route, or [] when it has no route. */
@@ -176,6 +176,22 @@ export function defaultAnchor(
     case 'branchPoint':
       return null
   }
+}
+
+/**
+ * The segments an anchored label may slide along when dragged: the whole route
+ * of its wire, the whole run of its bundle, or (a limb label) its own segment.
+ * Its current segment comes first, so a drop equidistant from two keeps it there.
+ */
+export function labelTrack(doc: HarnessDocument, label: Label): Id[] {
+  const t = label.target
+  const run =
+    t.type === 'wire'
+      ? wireRoutePath(doc, t.wireId)
+      : t.type === 'bundle'
+        ? (doc.bundles.find((b) => b.id === t.bundleId)?.segmentIds ?? [])
+        : []
+  return [...new Set([...(label.anchor ? [label.anchor.segmentId] : []), ...run])]
 }
 
 /** Distance (mm) of an anchor from the NEAREST end of its segment. */

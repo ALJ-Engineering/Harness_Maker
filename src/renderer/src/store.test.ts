@@ -1305,6 +1305,34 @@ describe('commitGesture (B5)', () => {
     expect(s().doc.drawing.blocks).toEqual(blocksBefore)
   })
 
+  it('an anchor move with a segmentId re-pins the label to that segment; an unknown one is ignored', () => {
+    const wireId = s().addWire({ type: 'cavity', cavityId: 'a' }, { type: 'cavity', cavityId: 'b' })
+    const seg0 = s().doc.wireRoutes.find((r) => r.wireId === wireId)!.path[0]
+    s().insertBranchPoint(seg0, { x: 10, y: 0 })
+    const [first, second] = s().doc.wireRoutes.find((r) => r.wireId === wireId)!.path
+    const labelId = s().addLabel({ type: 'wire', wireId }, 'wireMarker', 'M', { x: 0, y: 0 })
+    s().applyEdit((d) => {
+      d.labels.find((l) => l.id === labelId)!.anchor = { segmentId: first, fraction: 0.5 }
+    })
+    const before = s().past.length
+    s().commitGesture({
+      nodeMoves: [],
+      target: 'physical',
+      labelMoves: [],
+      anchorMoves: [{ id: labelId, segmentId: second, fraction: 0.25 }]
+    })
+    expect(s().doc.labels.find((l) => l.id === labelId)!.anchor).toEqual({ segmentId: second, fraction: 0.25 })
+    expect(s().past.length).toBe(before + 1)
+    s().commitGesture({
+      nodeMoves: [],
+      target: 'physical',
+      labelMoves: [],
+      anchorMoves: [{ id: labelId, segmentId: 'no-such-segment', fraction: 0.75 }]
+    })
+    expect(s().doc.labels.find((l) => l.id === labelId)!.anchor).toEqual({ segmentId: second, fraction: 0.25 })
+    expect(s().past.length).toBe(before + 1)
+  })
+
   it('commitGesture with no effective change pushes no history entry (B5)', () => {
     const before = s().past.length
     s().commitGesture({ nodeMoves: [], target: 'physical', labelMoves: [], anchorMoves: [] })

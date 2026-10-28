@@ -77,6 +77,17 @@ export interface BlockMove {
 }
 
 /**
+ * An anchored-label slide: the new position ALONG its segment, and with
+ * `segmentId` a different segment to ride — a wire label may be dragged along
+ * its wire's whole route, off a shared bundle limb onto the wire's own.
+ */
+export interface AnchorMove {
+  id: Id
+  fraction: number
+  segmentId?: Id
+}
+
+/**
  * What a load hands the store besides the document itself: the repairs
  * `reconcileDocument` made, the loader-level migrations `parseDocument` applied
  * to the file's own shape, and the document as it actually sits ON DISK.
@@ -189,10 +200,12 @@ export interface HarnessState {
 
   /**
    * Commit anchored-label slides after a drag, as ONE undoable edit (writes
-   * `Label.anchor.fraction` — the position ALONG the segment line). Only labels
-   * that currently have an anchor are touched. No-op (no history) if nothing moved.
+   * `Label.anchor.fraction` — the position ALONG the segment line — and, for a
+   * move with `segmentId`, the segment it rides). Only labels that currently
+   * have an anchor are touched, and never onto a segment that does not exist.
+   * No-op (no history) if nothing moved.
    */
-  commitLabelAnchors: (moves: { id: Id; fraction: number }[]) => void
+  commitLabelAnchors: (moves: AnchorMove[]) => void
 
   /** What one canvas pane shows. Widened with 'parts' | 'connections' in a later branch. */
   panes: { split: boolean; left: PaneView; right: PaneView }
@@ -276,7 +289,7 @@ export interface HarnessState {
     nodeMoves: { refId: Id; pos: Vec2 }[]
     target: 'physical' | 'schematic'
     labelMoves: { id: Id; pos: Vec2 }[]
-    anchorMoves: { id: Id; fraction: number }[]
+    anchorMoves: AnchorMove[]
     blockMoves?: BlockMove[]
   }) => void
 
@@ -737,18 +750,27 @@ function applyLabelPositions(d: Draft<HarnessDocument>, moves: { id: Id; pos: Ve
   }
 }
 
-function labelAnchorsChanged(doc: HarnessDocument, moves: { id: Id; fraction: number }[]): boolean {
-  const { labels } = doc
-  return moves.some((m) => {
-    const l = labels.find((x) => x.id === m.id)
-    return l != null && l.anchor != null && l.anchor.fraction !== m.fraction
+/** The moves that would land: the label has an anchor, and a new segment, if any, exists. */
+function feasibleAnchorMoves(doc: HarnessDocument, moves: AnchorMove[]): AnchorMove[] {
+  return moves.filter(
+    (m) =>
+      doc.labels.some((l) => l.id === m.id && l.anchor != null) &&
+      (m.segmentId === undefined || doc.segments.some((s) => s.id === m.segmentId))
+  )
+}
+
+function labelAnchorsChanged(doc: HarnessDocument, moves: AnchorMove[]): boolean {
+  return feasibleAnchorMoves(doc, moves).some((m) => {
+    const a = doc.labels.find((x) => x.id === m.id)!.anchor!
+    return a.fraction !== m.fraction || (m.segmentId !== undefined && m.segmentId !== a.segmentId)
   })
 }
 
-function applyLabelAnchors(d: Draft<HarnessDocument>, moves: { id: Id; fraction: number }[]): void {
-  for (const m of moves) {
-    const l = d.labels.find((x) => x.id === m.id)
-    if (l && l.anchor) l.anchor.fraction = m.fraction
+function applyLabelAnchors(d: Draft<HarnessDocument>, moves: AnchorMove[]): void {
+  for (const m of feasibleAnchorMoves(d, moves)) {
+    const a = d.labels.find((x) => x.id === m.id)!.anchor!
+    if (m.segmentId !== undefined) a.segmentId = m.segmentId
+    a.fraction = m.fraction
   }
 }
 

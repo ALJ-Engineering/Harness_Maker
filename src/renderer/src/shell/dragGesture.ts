@@ -1,7 +1,7 @@
 import type { HarnessDocument, Id } from '@shared/model/schema'
 import { computeFormboard } from '@shared/model/formboard'
-import { projectFraction } from '@shared/model/treatments'
-import type { BlockMove, HarnessState, PaneView } from '../store'
+import { labelTrack, projectFraction } from '@shared/model/treatments'
+import type { AnchorMove, BlockMove, HarnessState, PaneView } from '../store'
 import type { FlowNode } from '../flow/toFlow'
 
 /**
@@ -52,11 +52,12 @@ export function dragOutcome(
     )
     .map((n) => ({ refId: n.id, pos: { x: n.position.x, y: n.position.y } }))
   // Labels: an anchored label is a dot ON the wire — its node position IS the
-  // bead, so project it straight onto the segment line and commit a fraction.
+  // bead, so project it onto the nearest segment of its track (its wire's whole
+  // route, so it can leave a shared bundle limb) and commit segment + fraction.
   // An unanchored label keeps a free `pos`. Everything else is a
   // placement/branch-point move set; all three move sets commit via one commitGesture call (one undo entry per drag).
   const labelNodes = dragged.filter((n) => n.type === 'label')
-  const anchorMoves: { id: string; fraction: number }[] = []
+  const anchorMoves: AnchorMove[] = []
   const freeMoves: { id: string; pos: { x: number; y: number } }[] = []
   if (labelNodes.length) {
     // Project onto the POST-move geometry: in a group drag the segment's end
@@ -66,9 +67,19 @@ export function dragOutcome(
     const segPos = new Map(computeFormboard(geomDoc).segments.map((s) => [s.id, s]))
     for (const n of labelNodes) {
       const lab = doc.labels.find((l) => l.id === n.id)
-      const seg = lab?.anchor ? segPos.get(lab.anchor.segmentId) : undefined
-      if (lab?.anchor && seg) {
-        anchorMoves.push({ id: n.id, fraction: projectFraction(seg.a, seg.b, n.position) })
+      let best: (AnchorMove & { dist: number }) | null = null
+      for (const sid of lab?.anchor ? labelTrack(doc, lab) : []) {
+        const seg = segPos.get(sid)
+        if (!seg) continue
+        const fraction = projectFraction(seg.a, seg.b, n.position)
+        const dist = Math.hypot(
+          seg.a.x + (seg.b.x - seg.a.x) * fraction - n.position.x,
+          seg.a.y + (seg.b.y - seg.a.y) * fraction - n.position.y
+        )
+        if (!best || dist < best.dist) best = { id: n.id, segmentId: sid, fraction, dist }
+      }
+      if (best) {
+        anchorMoves.push({ id: best.id, segmentId: best.segmentId, fraction: best.fraction })
       } else {
         freeMoves.push({ id: n.id, pos: { x: n.position.x, y: n.position.y } })
       }
