@@ -5,6 +5,7 @@ import { registerPdfHandlers } from './pdf'
 import { buildAppMenu } from './menu'
 import { registerPartsImageHandlers, registerPartsImageScheme } from './partsImagesIpc'
 import { registerPartsLibraryHandlers } from './partsLibraryIpc'
+import { registerRecentFiles } from './recentFilesIpc'
 import { applyMcpSettings, attachDocumentWindow, registerMcp, stopMcp } from './mcp'
 
 // Last-known dirty flag per window, pushed from the renderer via `doc:dirty`.
@@ -80,6 +81,8 @@ app.whenReady().then(() => {
   registerPartsLibraryHandlers()
   registerMcp(buildAppMenu)
   buildAppMenu()
+  // Rebuilds the menu once the stored list is read, and on every change.
+  void registerRecentFiles(buildAppMenu)
   createWindow()
   // Agent access stays as the user left it (off on a fresh install).
   void applyMcpSettings()

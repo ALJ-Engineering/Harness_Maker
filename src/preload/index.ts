@@ -72,6 +72,13 @@ const api = {
   /** Show open dialog + read file. Resolves null if the user cancels. */
   openDocument: (): Promise<OpenResult | null> => ipcRenderer.invoke('doc:open'),
 
+  /** Read a file from File ▸ Open Recent. Main reads only a path that is on the list. */
+  openRecentDocument: (path: string): Promise<OpenResult | { error: string }> =>
+    ipcRenderer.invoke('doc:openRecent', path),
+
+  /** Put a document that was just opened or saved at the top of File ▸ Open Recent. */
+  addRecentFile: (path: string): Promise<void> => ipcRenderer.invoke('recent:add', path),
+
   /** Write `content` to a known `path`. Resolves the path written. */
   saveDocument: (path: string, content: string): Promise<string> =>
     ipcRenderer.invoke('doc:save', { path, content }),
@@ -185,6 +192,13 @@ const api = {
     const listener = (_e: unknown, action: MenuAction): void => cb(action)
     ipcRenderer.on('menu:action', listener)
     return () => ipcRenderer.removeListener('menu:action', listener)
+  },
+
+  /** File ▸ Open Recent ▸ <file> was clicked. Returns an unsubscribe. */
+  onOpenRecent: (cb: (path: string) => void): (() => void) => {
+    const listener = (_e: unknown, path: string): void => cb(path)
+    ipcRenderer.on('menu:openRecent', listener)
+    return () => ipcRenderer.removeListener('menu:openRecent', listener)
   },
 
   /**

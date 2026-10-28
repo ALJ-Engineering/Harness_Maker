@@ -12,11 +12,16 @@ export interface Settings {
   partsLibraryDir?: string
   /** UI theme. Absent means the default, `dark`. Never enters HarnessDocument. */
   theme?: ThemeName
+  /** File ▸ Open Recent: documents opened or saved, most recent first (`recentFiles.ts`). */
+  recentFiles?: string[]
   /** Agent access: serve the in-app MCP server (`src/main/mcp/`). Absent means off. */
   mcpEnabled?: boolean
   /** Its localhost port. Absent means `DEFAULT_MCP_PORT`. No UI: edited in settings.json. */
   mcpPort?: number
 }
+
+/** How many documents File ▸ Open Recent remembers. */
+export const MAX_RECENT_FILES = 10
 
 /** The theme to render with: the stored one, or `dark` on a fresh install. */
 export function themeOf(s: Settings): ThemeName {
@@ -52,6 +57,10 @@ export function parseSettings(text: string): Settings {
     const out: Settings = {}
     if (typeof r.partsLibraryDir === 'string') out.partsLibraryDir = r.partsLibraryDir
     if (r.theme === 'dark' || r.theme === 'light') out.theme = r.theme
+    if (Array.isArray(r.recentFiles)) {
+      const files = r.recentFiles.filter((f): f is string => typeof f === 'string' && f !== '')
+      if (files.length) out.recentFiles = files.slice(0, MAX_RECENT_FILES)
+    }
     if (typeof r.mcpEnabled === 'boolean') out.mcpEnabled = r.mcpEnabled
     if (Number.isInteger(r.mcpPort) && (r.mcpPort as number) >= 1 && (r.mcpPort as number) <= 65535) out.mcpPort = r.mcpPort as number
     return out

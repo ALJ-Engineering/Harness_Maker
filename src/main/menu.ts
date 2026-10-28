@@ -1,5 +1,7 @@
 import { app, clipboard, Menu, BrowserWindow, type MenuItemConstructorOptions } from 'electron'
 import { chooseLibraryDir } from './partsLibraryIpc'
+import { recentLabel } from './recentFiles'
+import { clearRecentFiles, openRecent, recentFiles } from './recentFilesIpc'
 import { claudeCodeCommand, claudeDesktopConfig, mcpStatus, mcpUrl, setMcpEnabled, type McpStatus } from './mcp'
 
 export type MenuAction =
@@ -73,11 +75,30 @@ export function buildAppMenu(): void {
   // Windows and Linux. macOS menus have no access keys.
   const top = (label: string): string => (isMac ? label : `&${label}`)
 
+  // Rebuilt by `recentFilesIpc` whenever the list changes.
+  const recent = recentFiles()
+  const openRecentMenu: MenuItemConstructorOptions = {
+    label: 'Open Recent',
+    submenu: recent.length
+      ? [
+          ...recent.map(
+            (path, i): MenuItemConstructorOptions => ({
+              label: recentLabel(path, i, process.platform),
+              click: () => openRecent(path)
+            })
+          ),
+          { type: 'separator' },
+          { label: 'Clear Recently Opened', click: clearRecentFiles }
+        ]
+      : [{ label: 'No recent files', enabled: false }]
+  }
+
   const fileMenu: MenuItemConstructorOptions = {
     label: top('File'),
     submenu: [
       { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
       { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
+      openRecentMenu,
       { type: 'separator' },
       { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
       { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('saveAs') },

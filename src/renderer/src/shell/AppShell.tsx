@@ -119,7 +119,7 @@ export function AppShell(): React.JSX.Element {
   const setSplit = useHarnessStore((s) => s.setSplit)
   const refreshPartRefs = useHarnessStore((s) => s.refreshPartRefs)
 
-  const { open, save, saveAs, newDoc, exportPdf, exportBom } = useFileOps()
+  const { open, openRecent, save, saveAs, newDoc, exportPdf, exportBom } = useFileOps()
 
   // The UI theme. It reaches the CANVAS only by being threaded into the pane's
   // projection (see `HarnessPane`'s `flow` memo): React Flow repaints an edge on
@@ -376,6 +376,9 @@ export function AppShell(): React.JSX.Element {
       }
     })
   }, [open, save, saveAs, newDoc, undo, redo, exportBom, library.catalog, refreshPartRefs])
+
+  // File ▸ Open Recent ▸ <file>.
+  useEffect(() => window.api.onOpenRecent((path) => void openRecent(path)), [openRecent])
 
   // Keep the window title in sync with file name + dirty state.
   useEffect(() => {
