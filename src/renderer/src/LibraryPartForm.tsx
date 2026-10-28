@@ -1,6 +1,13 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { FreeTerminalKind, GaugeUnit, SpliceKind } from '@shared/model/schema'
-import { newLibraryPart, type LibraryCableCore, type LibraryCavity, type LibraryPart, type PartKind } from '@shared/parts/librarySchema'
+import {
+  newLibraryPart,
+  type LibraryCableCore,
+  type LibraryCavity,
+  type LibraryLead,
+  type LibraryPart,
+  type PartKind
+} from '@shared/parts/librarySchema'
 import { PART_KINDS } from '@shared/parts/librarySchema'
 import { sanitisePartNumber } from '@shared/parts/images'
 import { Field, NumberEdit, SelectEdit, TextEdit } from './panel/fields'
@@ -44,7 +51,8 @@ const GAUGE_UNIT_OPTS: { value: GaugeUnit; label: string }[] = [
  * The cavity template table for a connector library record. `LibraryCavity`
  * carries no id (unlike a document `Cavity`), so rows are addressed by index —
  * fine here since the only reordering operation is append/remove, never a
- * drag-sort.
+ * drag-sort. A cavity with a factory lead (an in-line fuse holder's pigtail)
+ * has no default pin; its lead's size, colour and length go on a row of its own.
  */
 function CavityTemplateTable({
   cavities,
@@ -80,9 +88,11 @@ function CavityTemplateTable({
     const merged: LibraryCavity = { ...next[i], ...patch }
     if (merged.defaultPin === '') delete merged.defaultPin
     if (merged.defaultSeal === '') delete merged.defaultSeal
+    if (merged.lead === undefined) delete merged.lead
     next[i] = merged
     onChange(next)
   }
+  const updateLead = (i: number, patch: Partial<LibraryLead>): void => update(i, { lead: { ...cavities[i].lead, ...patch } })
 
   const remove = (i: number): void => onChange(cavities.filter((_, idx) => idx !== i))
 
@@ -105,33 +115,82 @@ function CavityTemplateTable({
             <th>Pos</th>
             <th>Default pin</th>
             <th>Default seal</th>
+            <th>Lead</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {cavities.map((c, i) => (
-            <tr key={i}>
-              <td>
-                <TextEdit value={c.position} onCommit={(v) => update(i, { position: v })} />
-              </td>
-              <td>
-                <TextEdit
-                  value={c.defaultPin ?? ''}
-                  onCommit={(v) => update(i, { defaultPin: v.trim() || undefined })}
-                />
-              </td>
-              <td>
-                <TextEdit
-                  value={c.defaultSeal ?? ''}
-                  onCommit={(v) => update(i, { defaultSeal: v.trim() || undefined })}
-                />
-              </td>
-              <td>
-                <button className="cavtable__del" title="Remove cavity" onClick={() => remove(i)}>
-                  &#x2715;
-                </button>
-              </td>
-            </tr>
+            <Fragment key={i}>
+              <tr>
+                <td>
+                  <TextEdit value={c.position} onCommit={(v) => update(i, { position: v })} />
+                </td>
+                <td>
+                  {c.lead ? (
+                    <span className="cavtable__lead">factory lead</span>
+                  ) : (
+                    <TextEdit
+                      value={c.defaultPin ?? ''}
+                      onCommit={(v) => update(i, { defaultPin: v.trim() || undefined })}
+                    />
+                  )}
+                </td>
+                <td>
+                  <TextEdit
+                    value={c.defaultSeal ?? ''}
+                    onCommit={(v) => update(i, { defaultSeal: v.trim() || undefined })}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    title="The maker fitted a wire lead here, so no contact goes in"
+                    checked={c.lead !== undefined}
+                    onChange={(e) =>
+                      update(i, e.target.checked ? { lead: {}, defaultPin: undefined } : { lead: undefined })
+                    }
+                  />
+                </td>
+                <td>
+                  <button className="cavtable__del" title="Remove cavity" onClick={() => remove(i)}>
+                    &#x2715;
+                  </button>
+                </td>
+              </tr>
+              {c.lead && (
+                <tr>
+                  <td></td>
+                  <td colSpan={4}>
+                    <span className="pf__lead">
+                      <NumberEdit
+                        value={c.lead.gaugeMm2}
+                        optional
+                        min={0}
+                        minExclusive
+                        placeholder="size"
+                        onCommit={(v) => updateLead(i, { gaugeMm2: v })}
+                      />
+                      mm²
+                      <TextEdit
+                        value={c.lead.color ?? ''}
+                        placeholder="colour"
+                        onCommit={(v) => updateLead(i, { color: v.trim().toUpperCase() || undefined })}
+                      />
+                      <NumberEdit
+                        value={c.lead.lengthMm}
+                        optional
+                        min={0}
+                        minExclusive
+                        placeholder="length"
+                        onCommit={(v) => updateLead(i, { lengthMm: v })}
+                      />
+                      mm
+                    </span>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -1,6 +1,7 @@
-import type { Cable, Cavity, Connector, FreeTerminal, Id, PartRef, Splice } from '../model/schema'
+import type { Cable, Cavity, CavityLead, Connector, FreeTerminal, Id, PartRef, Splice } from '../model/schema'
 import { sortedCavities } from '../model/anchors'
-import { newLibraryPart, refOf, type LibraryCavity, type LibraryPart } from './librarySchema'
+import { gaugeMm2 } from '../model/leads'
+import { newLibraryPart, refOf, type LibraryCavity, type LibraryLead, type LibraryPart } from './librarySchema'
 
 /**
  * Library record → document entity, and back. Pure: the store supplies ids and
@@ -25,11 +26,30 @@ export function instantiateConnector(
     const seal = refFor(c.defaultSeal)
     if (pin) cav.pin = pin
     if (seal) cav.seal = seal
+    if (c.lead) cav.lead = leadFromLibrary(c.lead)
     return cav
   })
   const conn: Omit<Connector, 'id'> = { designator, housing: refOf(part), cavities }
   if (tpl.gender) conn.gender = tpl.gender
   return conn
+}
+
+/** A library cavity's factory lead as the document holds it (`Cavity.lead`). */
+export function leadFromLibrary(l: LibraryLead): CavityLead {
+  const lead: CavityLead = {}
+  if (l.gaugeMm2 !== undefined) lead.gauge = { value: l.gaugeMm2, unit: 'mm2' }
+  if (l.color) lead.color = { base: l.color }
+  if (l.lengthMm !== undefined) lead.lengthMm = l.lengthMm
+  return lead
+}
+
+/** The other way, for Save to library: an AWG size is stored as its mm² (to 0.01). */
+function leadToLibrary(l: CavityLead): LibraryLead {
+  const lead: LibraryLead = {}
+  if (l.gauge) lead.gaugeMm2 = l.gauge.unit === 'mm2' ? l.gauge.value : Number(gaugeMm2(l.gauge).toFixed(2))
+  if (l.color) lead.color = l.color.base
+  if (l.lengthMm !== undefined) lead.lengthMm = l.lengthMm
+  return lead
 }
 
 export function instantiateFreeTerminal(part: LibraryPart): Omit<FreeTerminal, 'id' | 'designator'> {
@@ -63,6 +83,10 @@ export function partFromConnector(conn: Connector): LibraryPart | null {
     const lc: LibraryCavity = { position: c.position }
     if (c.pin?.partNumber) lc.defaultPin = c.pin.partNumber
     if (c.seal?.partNumber) lc.defaultSeal = c.seal.partNumber
+    if (c.lead) {
+      lc.lead = leadToLibrary(c.lead)
+      delete lc.defaultPin
+    }
     return lc
   })
   p.connector = conn.gender ? { gender: conn.gender, cavities } : { cavities }

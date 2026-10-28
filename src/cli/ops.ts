@@ -6,7 +6,8 @@ import type { Gauge } from '@shared/model/schema'
  */
 export type Op =
   | { op: 'place'; kind: 'connector' | 'terminal' | 'splice'; partNumber: string; designator?: string; landsOn?: string }
-  | { op: 'wire'; from: string; to: string; partNumber: string; color: string; gauge?: Gauge }
+  // partNumber and color are required unless an end is a factory lead (`Cavity.lead`): see Batch.wire.
+  | { op: 'wire'; from: string; to: string; partNumber?: string; color?: string; gauge?: Gauge }
   | {
       op: 'cable'
       partNumber: string
@@ -75,7 +76,7 @@ export const SPECS: Record<OpName, Record<string, FieldSpec>> = {
     designator: [false, str],
     landsOn: [false, str]
   },
-  wire: { from: [true, str], to: [true, str], partNumber: [true, str], color: [true, str], gauge: [false, gauge] },
+  wire: { from: [true, str], to: [true, str], partNumber: [false, str], color: [false, str], gauge: [false, gauge] },
   cable: {
     partNumber: [true, str],
     name: [true, str],

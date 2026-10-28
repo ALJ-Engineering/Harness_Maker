@@ -46,6 +46,19 @@ describe('terminal / splice', () => {
 })
 
 describe('partFrom*', () => {
+  it('a factory lead goes into the document and back, an AWG size as its mm²', () => {
+    const holder: LibraryPart = {
+      ...newLibraryPart('connector', 'FH'),
+      description: 'fuse holder',
+      connector: { cavities: [{ position: '1', lead: { gaugeMm2: 2.08, color: 'RD', lengthMm: 203 } }] }
+    }
+    const c = { id: 'c', ...instantiateConnector(holder, 'F1', resolve, newId) }
+    expect(c.cavities[0]).toMatchObject({ status: 'populated', lead: { gauge: { value: 2.08, unit: 'mm2' }, color: { base: 'RD' }, lengthMm: 203 } })
+    expect(c.cavities[0].pin).toBeUndefined()
+    expect(partFromConnector(c)!.connector!.cavities).toEqual([{ position: '1', lead: { gaugeMm2: 2.08, color: 'RD', lengthMm: 203 } }])
+    c.cavities[0].lead = { gauge: { value: 14, unit: 'AWG' } }
+    expect(partFromConnector(c)!.connector!.cavities[0].lead).toEqual({ gaugeMm2: 2.08 })
+  })
   it('connector → part round-trips the template', () => {
     const c = { id: 'c', ...instantiateConnector(housing, 'X1', resolve, newId) }
     expect(partFromConnector(c)).toEqual({ ...housing, connector: { gender: 'male', cavities: [{ position: '1', defaultPin: 'PN-0100', defaultSeal: 'PN-9999' }, { position: '2' }] } })

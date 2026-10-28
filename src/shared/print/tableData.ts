@@ -169,12 +169,12 @@ const WIRING_COLS: Column[] = [
   { key: 'notes', title: 'Notes', wMm: 110 }
 ]
 
-/** The `pin.partNumber` of the cavity at `ends[0]`, if that end is a cavity. */
+/** The `pin.partNumber` of the cavity at `ends[0]`, if that end is a cavity; "factory lead" if it has one. */
 function fromContactPn(doc: HarnessDocument, end0: Endpoint): string {
   if (end0.type !== 'cavity') return ''
   const owner = doc.connectors.find((c) => c.cavities.some((cv) => cv.id === end0.cavityId))
   const cav = owner?.cavities.find((cv) => cv.id === end0.cavityId)
-  return cav?.pin?.partNumber ?? ''
+  return cav?.lead ? 'factory lead' : (cav?.pin?.partNumber ?? '')
 }
 
 /**

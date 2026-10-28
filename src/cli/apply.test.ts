@@ -63,6 +63,11 @@ beforeEach(async () => {
   }
   const cabNoDs = full(newLibraryPart('cable', 'CAB-NODS'))
   cabNoDs.cable = { cores: [{ name: '1', color: 'WH', gauge: mm05 }] }
+  // An in-line fuse holder: two factory-fitted leads, no contacts.
+  const holder = full(newLibraryPart('connector', 'FH-1'))
+  holder.connector = {
+    cavities: ['1', '2'].map((position) => ({ position, lead: { gaugeMm2: 2.08, color: 'RD', lengthMm: 203 } }))
+  }
   lib = await makeLibrary(
     tmp,
     [
@@ -80,9 +85,10 @@ beforeEach(async () => {
       cabNoDs,
       cabNoDrainCore,
       full(newLibraryPart('seal', 'SEAL-1')),
-      sealed
+      sealed,
+      holder
     ],
-    ['HSG-4', 'PIN-1', 'SPL-1', 'RING-1', 'PLUG-1', 'W-05', 'W-075', 'W-GN', 'W-GNYE', 'CAB-2', 'SEAL-1', 'CAB-NDC', 'HSG-S']
+    ['HSG-4', 'PIN-1', 'SPL-1', 'RING-1', 'PLUG-1', 'W-05', 'W-075', 'W-GN', 'W-GNYE', 'CAB-2', 'SEAL-1', 'CAB-NDC', 'HSG-S', 'FH-1']
   )
   file = join(tmp, 'a.harness.json')
 })
@@ -545,7 +551,7 @@ describe('parseOps', () => {
   it('refuses a non-array, an unknown op, a missing or unknown field, a bad enum or gauge', () => {
     expect(parseOps({})).toEqual({ error: 'the batch must be a JSON array of operations' })
     expect(parseOps([{ op: 'move' }])).toHaveProperty('error', expect.stringMatching(/^op #1: 'op' must be one of/))
-    expect(parseOps([{ op: 'wire', from: 'X1:1', to: 'X2:1', color: 'GN' }])).toEqual({ error: "op #1 (wire): missing 'partNumber'" })
+    expect(parseOps([{ op: 'wire', to: 'X2:1', color: 'GN', partNumber: 'W' }])).toEqual({ error: "op #1 (wire): missing 'from'" })
     expect(parseOps([{ op: 'wire', from: 'X1:1', to: 'X2:1', color: 'GN', partNumber: 'W', colour: 'RD' }])).toEqual({
       error: "op #1 (wire): unknown field 'colour'"
     })
@@ -684,5 +690,72 @@ describe('fix round 1 — minor', () => {
     const after = await loadHarness(file)
     expect(after.repairs).toEqual([])
     expect([after.doc.cables, after.doc.twists, after.doc.labels, after.doc.sleeving]).toEqual([[], [], [], []])
+  })
+})
+
+describe('applyOps — factory leads', () => {
+  // X1 is the fuse holder FH-1 (leads 2.08 mm² RD, 203 mm), X2 an ordinary HSG-4.
+  const holderAndPlug: Op[] = [
+    { op: 'place', kind: 'connector', partNumber: 'FH-1' },
+    { op: 'place', kind: 'connector', partNumber: 'HSG-4' }
+  ]
+
+  it('placing the holder gives its cavities the leads and no pins', async () => {
+    expect((await create(holderAndPlug)).ok).toBe(true)
+    const x1 = (await docOnDisk()).connectors[0]
+    expect(x1.cavities.map((c) => [c.pin, c.lead])).toEqual([
+      [undefined, { gauge: { value: 2.08, unit: 'mm2' }, color: { base: 'RD' }, lengthMm: 203 }],
+      [undefined, { gauge: { value: 2.08, unit: 'mm2' }, color: { base: 'RD' }, lengthMm: 203 }]
+    ])
+  })
+
+  it('a wire from a lead needs no part: it IS the lead, with its size and colour', async () => {
+    const r = await create([...holderAndPlug, { op: 'wire', from: 'X1:1', to: 'X2:1' }])
+    expect(r.ok && r.summary).toContain('wired X1:1 → X2:1 RD 2.08 mm2 (factory lead of X1.1)')
+    const w = (await docOnDisk()).wires[0]
+    expect(w).toMatchObject({ gauge: { value: 2.08, unit: 'mm2' }, color: { base: 'RD' } })
+    expect(w.spec).toBeUndefined()
+  })
+
+  it('refuses a wire part, or a colour or size that is not the lead', async () => {
+    expect(errorsOf(await create([...holderAndPlug, gn('X2:1', 'X1:1')]))).toEqual([
+      'op #3 (wire): X1.1 is a factory lead: the wire is the lead itself, so leave out partNumber'
+    ])
+    expect(errorsOf(await create([...holderAndPlug, { op: 'wire', from: 'X1:1', to: 'X2:1', color: 'BK' }]))).toEqual([
+      "op #3 (wire): X1.1's factory lead is RD, not BK"
+    ])
+    expect(
+      errorsOf(await create([...holderAndPlug, { op: 'wire', from: 'X1:1', to: 'X2:1', gauge: { value: 2.5, unit: 'mm2' } }]))
+    ).toEqual(["op #3 (wire): X1.1's factory lead is 2.08 mm2; 2.5 mm2 was asked for"])
+    // The same size in AWG, and the lead's own colour, are fine.
+    const ok = await create([...holderAndPlug, { op: 'wire', from: 'X1:1', to: 'X2:1', color: 'RD', gauge: { value: 14, unit: 'AWG' } }])
+    expect(ok.ok).toBe(true)
+  })
+
+  it('between two ordinary cavities partNumber and color are still required', async () => {
+    expect(errorsOf(await create([...twoConnectors, { op: 'wire', from: 'X1:1', to: 'X2:1', color: 'GN' }]))).toEqual([
+      "op #3 (wire): missing 'partNumber'"
+    ])
+    expect(errorsOf(await create([...twoConnectors, { op: 'wire', from: 'X1:1', to: 'X2:1', partNumber: 'W-05' }]))).toEqual([
+      "op #3 (wire): missing 'color'"
+    ])
+  })
+
+  it('set-wire will not give a lead a wire part or another colour', async () => {
+    expect((await create([...holderAndPlug, { op: 'wire', from: 'X1:1', to: 'X2:1' }])).ok).toBe(true)
+    expect(errorsOf(await edit([{ op: 'set-wire', from: 'X1:1', to: 'X2:1', partNumber: 'W-05' }]))).toEqual([
+      'op #1 (set-wire): X1.1 is a factory lead: the wire is the lead itself, so leave out partNumber'
+    ])
+    expect(errorsOf(await edit([{ op: 'set-wire', from: 'X1:1', to: 'X2:1', color: 'GN' }]))).toEqual([
+      "op #1 (set-wire): X1.1's factory lead is RD, not GN"
+    ])
+  })
+
+  it('emptying a lead cavity drops the lead; populating it again brings it back from the record', async () => {
+    expect((await create([...holderAndPlug, { op: 'cavity', at: 'X1:2', status: 'empty' }])).ok).toBe(true)
+    expect((await docOnDisk()).connectors[0].cavities[1].lead).toBeUndefined()
+    const r = await edit([{ op: 'cavity', at: 'X1:2', status: 'populated' }])
+    expect(r.ok && r.summary).toContain('cavity X1:2 populated (factory lead)')
+    expect((await docOnDisk()).connectors[0].cavities[1].lead).toMatchObject({ lengthMm: 203 })
   })
 })

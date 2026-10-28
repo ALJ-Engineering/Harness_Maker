@@ -18,6 +18,7 @@ import type {
   Twist,
   Label,
   LabelKind,
+  CavityLead,
   CavityStatus,
   GaugeUnit,
   FreeTerminalKind,
@@ -32,7 +33,8 @@ import { primaryPartNumber } from '@shared/model/bodyParts'
 import type { PartImageLibrary } from '../usePartImages'
 import type { PartsLibrary } from '../usePartsLibrary'
 import type { LibraryPart } from '@shared/parts/librarySchema'
-import { partFromConnector, partFromFreeTerminal, partFromSplice } from '@shared/parts/instantiate'
+import { leadFromLibrary, partFromConnector, partFromFreeTerminal, partFromSplice } from '@shared/parts/instantiate'
+import { describeLead } from '@shared/model/leads'
 import {
   wireLength,
   segmentLengthMm,
@@ -690,8 +692,11 @@ const GENDER_OPTS = [
   { value: 'hybrid', label: 'hybrid' }
 ] as const
 
-const STATUS_OPTS: { value: CavityStatus; label: string }[] = [
+// 'lead': a factory-fitted lead (`Cavity.lead`). Populated, but nothing is
+// crimped in, so the pin column shows the lead instead of a pin picker.
+const STATUS_OPTS: { value: CavityStatus | 'lead'; label: string }[] = [
   { value: 'populated', label: 'populated' },
+  { value: 'lead', label: 'lead' },
   { value: 'plugged', label: 'plugged' },
   { value: 'empty', label: 'empty' }
 ]
@@ -771,6 +776,14 @@ function ConnectorEditor({
 
   const cavityWired = (cavityId: string): boolean =>
     doc.wires.some((w) => w.ends.some((e) => e.type === 'cavity' && e.cavityId === cavityId))
+
+  // What the housing's library record says about the lead at `position`, for
+  // "lead" in the status column; {} when it says nothing.
+  const libraryLead = (position: string): CavityLead => {
+    const lp = conn.housing ? library.resolve(conn.housing.partNumber) : undefined
+    const lead = lp?.kind === 'connector' ? lp.connector?.cavities.find((c) => c.position === position)?.lead : undefined
+    return lead ? leadFromLibrary(lead) : {}
+  }
 
   const addCavity = (): void =>
     set((c) => {
@@ -905,21 +918,41 @@ function ConnectorEditor({
                 </td>
                 <td>
                   <SelectEdit
-                    value={cv.status}
+                    value={cv.lead ? 'lead' : cv.status}
                     options={STATUS_OPTS}
-                    onCommit={(s) => setCav((c) => (c.status = s))}
+                    onCommit={(s) =>
+                      setCav((c) => {
+                        if (s === 'lead') {
+                          c.status = 'populated'
+                          delete c.pin
+                          if (!c.lead) c.lead = libraryLead(c.position)
+                        } else {
+                          c.status = s
+                          delete c.lead
+                        }
+                      })
+                    }
                   />
                 </td>
                 <td>
-                  {/* A short placeholder: the default "search or type a part
-                      number" truncates to "search o…" in a table cell. */}
-                  <PartPicker
-                    value={cv.pin}
-                    kinds={['pin']}
-                    library={library}
-                    placeholder="pin…"
-                    onCommit={(ref) => setCav((c) => (c.pin = ref))}
-                  />
+                  {cv.lead ? (
+                    <span
+                      className="cavtable__lead"
+                      title="Factory-fitted lead: no pin goes in, the wire is the lead. Size, colour and length come from the part's library record."
+                    >
+                      {describeLead(cv.lead) || 'factory lead'}
+                    </span>
+                  ) : (
+                    // A short placeholder: the default "search or type a part
+                    // number" truncates to "search o…" in a table cell.
+                    <PartPicker
+                      value={cv.pin}
+                      kinds={['pin']}
+                      library={library}
+                      placeholder="pin…"
+                      onCommit={(ref) => setCav((c) => (c.pin = ref))}
+                    />
+                  )}
                 </td>
                 <td>
                   <PartPicker

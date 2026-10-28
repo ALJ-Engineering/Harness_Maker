@@ -2,6 +2,7 @@ import type { HarnessDocument, PartRef, LabelKind, Id } from '../model/schema'
 import { describeEndpoint } from '../model/describe'
 import { wireLength, spanLengthMm, bundleLengthMm, type LengthSource } from '../model/geometry'
 import { sortedCavities } from '../model/anchors'
+import { wireLead } from '../model/leads'
 
 /** A part category in the BOM, used to group otherwise-equal part numbers. */
 export type BomCategory =
@@ -106,9 +107,10 @@ export function computeBom(doc: HarnessDocument): BomLine[] {
     add('seal', ft.seal)
   }
   for (const sp of doc.splices) add('splice', sp.part)
-  // Wire is sold by length; cable cores ship inside the cable, so skip them here.
+  // Wire is sold by length; cable cores ship inside the cable, and a part's
+  // factory lead ships with the part, so skip them here.
   for (const w of doc.wires) {
-    if (w.cableId != null) continue
+    if (w.cableId != null || wireLead(doc, w)) continue
     add('wire', w.spec, { mm: wireLength(doc, w.id).mm })
   }
   // A cable is one purchased assembly; its jacket cut length is the buyable length.
@@ -159,6 +161,11 @@ export function computeCutList(doc: HarnessDocument): CutRow[] {
     .map((w) => {
       const stripes = w.color.stripes?.length ? `/${w.color.stripes.join('/')}` : ''
       const len = wireLength(doc, w.id)
+      // A factory lead is cut down from the part's own lead, not off a reel.
+      const lead = wireLead(doc, w)
+      const leadNote = lead
+        ? `factory lead of ${lead.label}${lead.lead.lengthMm != null ? ` (${lead.lead.lengthMm} mm)` : ''}`
+        : ''
       return {
         sourceId: w.id,
         ref: wireIdx.get(w.id) ?? '',
@@ -168,7 +175,7 @@ export function computeCutList(doc: HarnessDocument): CutRow[] {
         colour: `${w.color.base}${stripes}`,
         lengthMm: len.mm,
         lengthSource: len.source,
-        notes: w.notes ?? '',
+        notes: [leadNote, w.notes ?? ''].filter(Boolean).join('; '),
         addLengthMm: len.source === 'derived' ? Math.max(0, w.addLengthMm ?? 0) : undefined
       }
     })

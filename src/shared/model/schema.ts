@@ -51,14 +51,27 @@ export interface Vec2 {
 
 export type CavityStatus = 'populated' | 'plugged' | 'empty'
 
+/**
+ * A wire lead the part's maker fitted to this position (an in-line fuse
+ * holder's pigtail). Nothing is crimped in: the lead is the conductor, so the
+ * wire drawn from this cavity IS the lead. Every field is optional; the ones
+ * given let DRC check the wire against the lead.
+ */
+export interface CavityLead {
+  gauge?: Gauge
+  color?: WireColor
+  lengthMm?: Mm // as supplied, before it is cut to length
+}
+
 /** A position inside a connector housing. */
 export interface Cavity {
   id: Id // global stable id (what endpoints reference)
   position: string // alphanumeric label on the housing: "1", "A", "A1"
   status: CavityStatus
-  pin?: PartRef // terminal crimped in; required when status==="populated"
+  pin?: PartRef // terminal crimped in; required when status==="populated" (unless `lead`)
   seal?: PartRef // optional wire seal
   plug?: PartRef // cavity plug; used when status==="plugged"
+  lead?: CavityLead // factory-fitted lead: no pin goes in (status stays "populated")
 }
 
 export interface Connector {

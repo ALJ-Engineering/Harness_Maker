@@ -248,6 +248,22 @@ describe('wire creation / deletion', () => {
     expect(s().dirty).toBe(false)
   })
 
+  it('a new wire from a factory lead takes the size and colour of the lead, not 0.5 mm² grey', () => {
+    s().applyEdit((d) => {
+      d.connectors.push({
+        id: 'f1',
+        designator: 'F1',
+        cavities: [{ id: 'lead', position: '1', status: 'populated', lead: { gauge: { value: 14, unit: 'AWG' }, color: { base: 'RD' } } }]
+      })
+    })
+    s().addWire({ type: 'cavity', cavityId: 'x' }, { type: 'cavity', cavityId: 'lead' })
+    s().addWire({ type: 'cavity', cavityId: 'x' }, { type: 'cavity', cavityId: 'z' })
+    expect(s().doc.wires.map((w) => [w.gauge, w.color])).toEqual([
+      [{ value: 14, unit: 'AWG' }, { base: 'RD' }],
+      [{ value: 0.5, unit: 'mm2' }, { base: 'GY' }]
+    ])
+  })
+
   it('parallel wires between the same pins are allowed (multigraph)', () => {
     const a = { type: 'cavity', cavityId: 'x' } as const
     const b = { type: 'cavity', cavityId: 'z' } as const
