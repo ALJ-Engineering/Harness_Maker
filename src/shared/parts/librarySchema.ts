@@ -16,24 +16,10 @@ export const PART_KINDS = [
 ] as const
 export type PartKind = (typeof PART_KINDS)[number]
 
-/**
- * A wire lead the maker fitted to this position (an in-line fuse holder's
- * pigtail), in place of a contact. Becomes `Cavity.lead` when the part is placed.
- */
-export interface LibraryLead {
-  gaugeMm2?: number
-  /** Base colour code, as `WireColor.base` ("RD"). */
-  color?: string
-  /** As supplied, before it is cut to length. */
-  lengthMm?: number
-}
-
 export interface LibraryCavity {
   position: string
   defaultPin?: string
   defaultSeal?: string
-  /** A factory-fitted lead: no contact goes in, so never alongside `defaultPin`. */
-  lead?: LibraryLead
 }
 
 /** One core of a multi-core cable, as the datasheet describes it. */
@@ -102,24 +88,6 @@ export function serializeLibraryPart(p: LibraryPart): string {
   return JSON.stringify(p, null, 2) + '\n'
 }
 
-/** A cavity's `lead` block, or why it is not one. Each field is optional; a given one must make sense. */
-function parseLead(v: unknown): LibraryLead | string {
-  if (!isRec(v)) return 'lead must be an object'
-  const lead: LibraryLead = {}
-  for (const k of ['gaugeMm2', 'lengthMm'] as const) {
-    if (v[k] === undefined) continue
-    const n = optNum(v[k])
-    if (n === undefined || n <= 0) return `lead.${k} must be a positive number`
-    lead[k] = n
-  }
-  if (v.color !== undefined) {
-    const color = optStr(v.color)
-    if (!color) return 'lead.color must be a colour code'
-    lead.color = color
-  }
-  return lead
-}
-
 function parseCavities(v: unknown): LibraryCavity[] | string {
   if (!Array.isArray(v)) return 'connector.cavities must be an array'
   const out: LibraryCavity[] = []
@@ -134,12 +102,6 @@ function parseCavities(v: unknown): LibraryCavity[] | string {
     const seal = optStr(c.defaultSeal)
     if (pin) cav.defaultPin = pin
     if (seal) cav.defaultSeal = seal
-    if (c.lead !== undefined) {
-      const lead = parseLead(c.lead)
-      if (typeof lead === 'string') return `cavity "${c.position}": ${lead}`
-      if (pin) return `cavity "${c.position}" has both a default pin and a factory lead`
-      cav.lead = lead
-    }
     out.push(cav)
   }
   return out

@@ -133,10 +133,6 @@ splice/terminal designator:
 ]
 ```
 
-A part whose maker fitted the wires, such as an in-line fuse holder with pigtail leads, has a `lead`
-on those cavities instead of a default pin. Its wire is the lead itself, so a `wire` from it takes no
-`partNumber`, and its size and colour come from the lead.
-
 Every part number used must exist as a complete record in the parts library. The library folder
 comes from `--library <dir>`, else `$HARNESS_LIBRARY`, else the app's setting. Add `--json` (and
 use `npm run --silent harness`) for machine-readable output. Pass absolute paths, because npm runs

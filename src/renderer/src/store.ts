@@ -43,7 +43,6 @@ import {
 import { incidentSegments, isSelfLoopSegment } from '@shared/model/topology'
 import { isValidLengthMm, routeNodeKey } from '@shared/model/geometry'
 import { bodyKey, bodyNode, endpointBodyId, sameEndpoint } from '@shared/model/endpoints'
-import { leadAt } from '@shared/model/leads'
 import type { Repair } from '@shared/model/reconcile'
 // One definition of "identity view" for the loader, the store and the renderer.
 import { isIdentityView, normaliseView } from '@shared/print/picture'
@@ -1089,20 +1088,11 @@ export const useHarnessStore = create<HarnessState>()(
       const id = newId()
       const segId = newId()
       get().applyEdit((d) => {
-        // New wires get sensible defaults (0.5 mm², grey), or, from a factory
-        // lead, the lead's own size and colour: the wire IS that lead. The
-        // electrical model is a multigraph, so parallel wires between pins are allowed.
-        const lead = (leadAt(d, a) ?? leadAt(d, b))?.lead
-        const g = lead?.gauge
-        const c = lead?.color
+        // New wires get sensible defaults (0.5 mm², grey); the electrical model
+        // is a multigraph, so duplicate/parallel wires between pins are allowed.
         addWireToDraft(
           d,
-          {
-            id,
-            ends: [a, b],
-            gauge: g ? { value: g.value, unit: g.unit } : { value: 0.5, unit: 'mm2' },
-            color: c ? { base: c.base, ...(c.stripes ? { stripes: [...c.stripes] } : {}) } : { base: 'GY' }
-          },
+          { id, ends: [a, b], gauge: { value: 0.5, unit: 'mm2' }, color: { base: 'GY' } },
           segId
         )
       })

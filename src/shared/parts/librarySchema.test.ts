@@ -25,20 +25,6 @@ const housing: LibraryPart = {
 }
 
 describe('parseLibraryPart', () => {
-  it('a cavity can have a factory lead instead of a default pin', () => {
-    const holder = {
-      ...newLibraryPart('connector', 'FH'),
-      description: 'fuse holder',
-      connector: { cavities: [{ position: '1', lead: { gaugeMm2: 2.08, color: 'RD', lengthMm: 203 } }, { position: '2', lead: {} }] }
-    }
-    expect(parseLibraryPart(serializeLibraryPart(holder))).toEqual({ part: holder })
-    const bad = (lead: unknown, defaultPin?: string) =>
-      parseLibraryPart(JSON.stringify({ ...holder, connector: { cavities: [{ position: '1', lead, defaultPin }] } }))
-    expect(bad({}, 'PIN-1')).toEqual({ error: 'cavity "1" has both a default pin and a factory lead' })
-    expect(bad({ lengthMm: -5 })).toEqual({ error: 'cavity "1": lead.lengthMm must be a positive number' })
-    expect(bad('RD')).toEqual({ error: 'cavity "1": lead must be an object' })
-  })
-
   it('round-trips through serialize', () => {
     const r = parseLibraryPart(serializeLibraryPart(housing))
     expect(r).toEqual({ part: housing })

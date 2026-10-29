@@ -52,8 +52,7 @@ export const OP_SCHEMAS: Record<OpName, ReturnType<typeof object>> = {
       color: string,
       gauge: object({ value: { type: 'number', exclusiveMinimum: 0 }, unit: { enum: ['mm2', 'AWG'] } }, ['value', 'unit'])
     },
-    // partNumber and color are required unless an end is a factory lead (checked when the op runs).
-    ['from', 'to']
+    ['from', 'to', 'partNumber', 'color']
   ),
   cable: object(
     {
@@ -137,7 +136,7 @@ export const TOOLS: ToolDef[] = [
 Ends are named by designator: "X1:7" (cavity 7 of connector X1), "SP1" / "T1" (a splice / free terminal), "CAN-1:shield:a" (shield end a of cable CAN-1). Every part number must be a complete parts-library record of the right kind.
 
 - place {kind: connector|terminal|splice, partNumber, designator?, landsOn? (terminal only)} — lands at the centre of the user's view; the designator defaults to the next free one (X1, T1, SP1…)
-- wire {from, to, partNumber (a wire record — it fixes the gauge), color ("GN", or base/stripe "GN/YE"), gauge?}. From a cavity with a factory lead (a part's own pre-fitted wire, e.g. an in-line fuse holder's pigtail: \`lead\` on the cavity in library_show) the wire IS that lead: leave out partNumber; color and gauge come from the lead and may be left out too
+- wire {from, to, partNumber (a wire record — it fixes the gauge), color ("GN", or base/stripe "GN/YE"), gauge?}
 - cable {partNumber (a cable record), name, cores: [{core, from, to}], drain?: {end: a|b, to}}
 - cavity {at: "X1:3", status: empty|plugged|populated, plugPartNumber? (plugged only)}
 - set-wire {from, to, color?, partNumber?} — a plain wire, not a cable core
@@ -226,9 +225,7 @@ Ends are named by designator: "X1:7" (cavity 7 of connector X1), "SP1" / "T1" (a
     description:
       'Add or replace a parts-library record, as `harness library put` does. `record` is the record JSON (library_show an ' +
       'existing part of the same kind for the shape): partNumber, kind, description, manufacturer, datasheetUrl, plus the ' +
-      'kind\'s own block (connector.cavities, wire.gauge, cable.cores…). A cavity whose wire the maker fitted (an in-line ' +
-      'fuse holder\'s pigtail) has `lead: {gaugeMm2?, color?, lengthMm?}` instead of a defaultPin. ' +
-      '`datasheet` is a PDF URL (downloaded) or local path. ' +
+      'kind\'s own block (connector.cavities, wire.gauge, cable.cores…). `datasheet` is a PDF URL (downloaded) or local path. ' +
       '`picture` is the part\'s photo, a PNG or JPEG of at most 5 MB, as a URL or local path; it replaces any picture the ' +
       'part had. Other formats (WebP, GIF…) are refused: convert them first. A picture is optional; to give an existing ' +
       'part one, put its library_show record again with `picture`. ' +

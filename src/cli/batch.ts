@@ -2,9 +2,7 @@ import type { Endpoint, Gauge, HarnessDocument, Id, Vec2, WireColor } from '@sha
 import { allDesignators } from '@shared/model/designators'
 import { natCompare } from '@shared/model/anchors'
 import { sameEndpoint } from '@shared/model/endpoints'
-import { leadAt, sameGauge, type LeadAt } from '@shared/model/leads'
 import { refOf, type LibraryPart, type PartKind } from '@shared/parts/librarySchema'
-import { leadFromLibrary } from '@shared/parts/instantiate'
 import { useHarnessStore } from '../renderer/src/store'
 import type { LibraryContext } from './libraryContext'
 import { incompleteReasons } from './rails'
@@ -275,11 +273,6 @@ class Batch {
     if ('errors' in r) return r.errors
     const [a, b] = r.ok
     if (sameEndpoint(a, b)) return [`from and to are the same end (${op.from})`]
-    const lead = leadAt(S().doc, a) ?? leadAt(S().doc, b)
-    if (lead) return this.leadWire(op, a, b, lead)
-    // Required unless an end is a factory lead, so the grammar leaves them optional.
-    if (op.partNumber === undefined) return [`missing 'partNumber'`]
-    if (op.color === undefined) return [`missing 'color'`]
     const p = this.part(op.partNumber, 'wire')
     if ('errors' in p) return p.errors
     const gauge = p.ok.wire!.gauge
@@ -298,37 +291,6 @@ class Batch {
       w.spec = spec
     })
     this.summary.push(`wired ${op.from} → ${op.to} ${op.color} ${fmtGauge(gauge)} (${op.partNumber})`)
-    return []
-  }
-
-  /**
-   * `wire` from a cavity with a factory lead: the wire IS the lead, cut to
-   * length, so it takes no wire part, and its size and colour are the lead's.
-   * A `color` or `gauge` given must agree with the lead; one the lead's record
-   * does not state must be given.
-   */
-  private leadWire(op: Extract<Op, { op: 'wire' }>, a: Endpoint, b: Endpoint, { lead, label }: LeadAt): string[] {
-    if (op.partNumber !== undefined)
-      return [`${label} is a factory lead: the wire is the lead itself, so leave out partNumber`]
-    let color = lead.color
-    if (op.color !== undefined) {
-      const c = parseColor(op.color)
-      if ('error' in c) return [c.error]
-      if (color && fmtColor(color) !== fmtColor(c)) return [`${label}'s factory lead is ${fmtColor(color)}, not ${op.color}`]
-      color = c
-    }
-    if (!color) return [`${label}'s factory lead has no colour on record: give color`]
-    if (op.gauge && lead.gauge && !sameGauge(op.gauge, lead.gauge))
-      return [`${label}'s factory lead is ${fmtGauge(lead.gauge)}; ${fmtGauge(op.gauge)} was asked for`]
-    const gauge = lead.gauge ?? op.gauge
-    if (!gauge) return [`${label}'s factory lead has no size on record: give gauge`]
-    const id = S().addWire(a, b)
-    S().applyEdit((d) => {
-      const w = d.wires.find((x) => x.id === id)!
-      w.gauge = { value: gauge.value, unit: gauge.unit }
-      w.color = { base: color.base, ...(color.stripes ? { stripes: [...color.stripes] } : {}) }
-    })
-    this.summary.push(`wired ${op.from} → ${op.to} ${fmtColor(color)} ${fmtGauge(gauge)} (factory lead of ${label})`)
     return []
   }
 
@@ -399,10 +361,9 @@ class Batch {
     S().applyEdit((d) => {
       const cv = d.connectors.flatMap((c) => c.cavities).find((c) => c.id === ep.cavityId)!
       cv.status = op.status
-      // No conductor lands here: no pin or wire seal to buy (the BOM counts them by cavity), and no lead.
+      // No conductor lands here: no pin or wire seal to buy (the BOM counts them by cavity).
       delete cv.pin
       delete cv.seal
-      delete cv.lead
       if (plugRef) cv.plug = plugRef
       else delete cv.plug
     })
@@ -442,14 +403,8 @@ class Batch {
       else delete cv.pin
       if (seal) cv.seal = seal
       else delete cv.seal
-      if (tpl.lead) cv.lead = leadFromLibrary(tpl.lead)
-      else delete cv.lead
     })
-    const filled = [
-      pin && `pin ${pin.partNumber}`,
-      seal && `seal ${seal.partNumber}`,
-      tpl.lead && 'factory lead'
-    ].filter(Boolean)
+    const filled = [pin && `pin ${pin.partNumber}`, seal && `seal ${seal.partNumber}`].filter(Boolean)
     this.summary.push(
       `cavity ${op.at} populated (${filled.length ? filled.join(', ') : `no default pin or seal in ${housing.partNumber}`})`
     )
@@ -472,13 +427,8 @@ class Batch {
       if ('errors' in p) return p.errors
       part = p.ok
     }
-    const current = S().doc.wires.find((y) => y.id === w.ok)!
-    // A factory lead keeps its own colour and takes no wire part (see leadWire).
-    const lead = leadAt(S().doc, current.ends[0]) ?? leadAt(S().doc, current.ends[1])
-    if (lead && part) return [`${lead.label} is a factory lead: the wire is the lead itself, so leave out partNumber`]
-    if (lead?.lead.color && color && fmtColor(lead.lead.color) !== fmtColor(color))
-      return [`${lead.label}'s factory lead is ${fmtColor(lead.lead.color)}, not ${op.color}`]
     // The colour rail against the record the wire will carry: the new one, else the one it has.
+    const current = S().doc.wires.find((y) => y.id === w.ok)!
     const record = part ?? (current.spec?.partNumber ? this.lib.catalog.part(current.spec.partNumber) : undefined)
     if (record && record.kind === 'wire') {
       const clash = colorRail(record, color ?? current.color)

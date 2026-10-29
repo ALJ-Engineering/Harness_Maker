@@ -6,7 +6,6 @@ import { isSpanContiguous } from '../model/treatments'
 import { branchDegree, isSelfLoopSegment, spliceDegree } from '../model/topology'
 import { sortedCavities } from '../model/anchors'
 import { endpointBodyId } from '../model/endpoints'
-import { describeLead, sameGauge, wireLead } from '../model/leads'
 import type { EntityRef, Finding } from './types'
 
 export type { Severity, EntityRef, Finding } from './types'
@@ -49,8 +48,7 @@ function rulePopulatedWithoutPin(doc: HarnessDocument): Finding[] {
   const findings: Finding[] = []
   for (const conn of doc.connectors) {
     for (const cav of sortedCavities(conn)) {
-      // A factory lead takes no contact: the lead is the conductor.
-      if (cav.status === 'populated' && !cav.pin && !cav.lead) {
+      if (cav.status === 'populated' && !cav.pin) {
         findings.push({
           ruleId: 'populated-without-pin',
           severity: 'warning',
@@ -58,54 +56,6 @@ function rulePopulatedWithoutPin(doc: HarnessDocument): Finding[] {
           refs: [{ kind: 'cavity', id: cav.id }]
         })
       }
-    }
-  }
-  return findings
-}
-
-/**
- * A wire on a factory lead (`Cavity.lead`) IS that lead, cut to length. So it
- * can be no longer than the lead as supplied (longer needs a splice and wire off
- * a reel), its size and colour are the lead's, and it takes no wire part of its
- * own: the lead comes with the part, so the BOM does not count such a wire.
- * Each check runs only when the lead says what it checks against.
- */
-function ruleLeadWires(doc: HarnessDocument): Finding[] {
-  const findings: Finding[] = []
-  const size = (g: { value: number; unit: string }): string => `${g.value} ${g.unit === 'mm2' ? 'mm²' : 'AWG'}`
-  const colour = (c: { base: string; stripes?: string[] }): string => [c.base, ...(c.stripes ?? [])].join('/')
-  for (const w of doc.wires) {
-    const at = wireLead(doc, w)
-    if (!at) continue
-    const { lead, label } = at
-    const refs: EntityRef[] = [{ kind: 'wire', id: w.id }]
-    const mm = wireLength(doc, w.id).mm
-    if (lead.lengthMm != null && mm != null && mm > lead.lengthMm) {
-      findings.push({
-        ruleId: 'wire-longer-than-lead',
-        severity: 'warning',
-        message: `The wire on ${label}'s factory lead runs ${fmtMm(mm)} mm, but the lead is ${fmtMm(lead.lengthMm)} mm: splice on more wire`,
-        refs
-      })
-    }
-    const differs: string[] = []
-    if (lead.gauge && !sameGauge(lead.gauge, w.gauge)) differs.push(`is ${size(w.gauge)}`)
-    if (lead.color && colour(lead.color) !== colour(w.color)) differs.push(`is ${colour(w.color)}`)
-    if (differs.length) {
-      findings.push({
-        ruleId: 'wire-differs-from-lead',
-        severity: 'warning',
-        message: `The wire on ${label}'s factory lead ${differs.join(' and ')}, but the lead is ${describeLead(lead)}`,
-        refs
-      })
-    }
-    if (w.spec?.partNumber) {
-      findings.push({
-        ruleId: 'lead-wire-has-part',
-        severity: 'warning',
-        message: `The wire on ${label}'s factory lead has wire part ${w.spec.partNumber}, which the BOM leaves out: the lead comes with the part`,
-        refs
-      })
     }
   }
   return findings
@@ -741,7 +691,6 @@ type RuleFn = (doc: HarnessDocument) => Finding[]
 const STRUCTURAL_RULES: RuleFn[] = [
   ruleUnconnectedPopulatedCavity,
   rulePopulatedWithoutPin,
-  ruleLeadWires,
   ruleEmptyCavityWired,
   ruleSpliceDegree,
   ruleBranchPointDegree,
