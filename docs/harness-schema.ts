@@ -195,6 +195,28 @@ export interface DrawingBlocks {
    * be rotated, and pinning one must not freeze its orientation.
    */
   pictureView?: Record<Id, PictureView>;
+  /** Pinned top-left of the length-tolerance block, MODEL mm. */
+  tolerance?: Vec2;
+}
+
+/**
+ * One band of the length-tolerance table: a wire up to `upToMm` long
+ * (inclusive; absent = everything longer than the band before) may be `plus`
+ * longer and `minus` shorter than drawn, in mm, or with `unit: "%"` in percent
+ * of its length.
+ */
+export interface LengthToleranceBand {
+  upToMm?: Mm;
+  plus: number;
+  minus: number;
+  unit: "mm" | "%";
+}
+
+/** The length-tolerance table printed on the drawing sheet. New tables start from IPC/WHMA-A-620 Table 11-1. */
+export interface ToleranceTable {
+  /** Banner text. Absent = "Length tolerance (IPC/WHMA-A-620)". */
+  title?: string;
+  bands: LengthToleranceBand[];
 }
 
 export interface DrawingConfig {
@@ -207,6 +229,8 @@ export interface DrawingConfig {
   /** @deprecated read-only compatibility; never written. */
   sheets?: SheetConfig[];
   titleBlock?: TitleBlock;
+  /** Absent = no tolerance table on the sheet. */
+  toleranceTable?: ToleranceTable;
   blocks?: DrawingBlocks;
 }
 

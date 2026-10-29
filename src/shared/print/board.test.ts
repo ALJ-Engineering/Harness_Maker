@@ -6,6 +6,7 @@ import {
   TABLE_GAP,
   printableSize,
   BOM_BLOCK_ID,
+  TOLERANCE_BLOCK_ID,
   TEMPLATE_GUTTER,
   BOM_BLOCK_MAX_W_FRAC,
   BOM_BLOCK_MAX_H_FRAC,
@@ -31,6 +32,7 @@ import { connectorPinouts } from './tableData'
 import { TITLE_BLOCK_W, TITLE_BLOCK_H } from './titleBlock'
 import { estimateTextWidthMm } from './text'
 import type { HarnessDocument, Vec2 } from '../model/schema'
+import { DEFAULT_TOLERANCE_TITLE, IPC_620_LENGTH_TOLERANCE } from '../model/schema'
 
 const A3 = sheetMm({ paper: 'A3', orientation: 'landscape' })
 const A4 = sheetMm({ paper: 'A4', orientation: 'landscape' })
@@ -914,5 +916,50 @@ describe('picture blocks', () => {
     const after = planBoard(d, A3, computeFormboard(d), IMG)
     expect(after.pictures[0].pinned).toBe(true)
     for (const t of after.tables) expect(inter(t.rect, after.pictures[0].rect)).toBe(false)
+  })
+})
+
+describe('planBoard — length-tolerance block', () => {
+  const withTable = (): HarnessDocument => {
+    const d = demoDocument()
+    d.drawing.toleranceTable = { bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) }
+    return d
+  }
+
+  it('is absent while the drawing has no tolerance table', () => {
+    expect(planBoard(demoDocument(), A3).tolerance).toBeUndefined()
+  })
+
+  it('defaults to right above the title block, flush with its right edge, clear of every other block', () => {
+    // On A1 the title block's corner is far from the demo harness, so nothing is in the way.
+    const A1 = sheetMm({ paper: 'A1', orientation: 'landscape' })
+    const p = planBoard(withTable(), A1)
+    const t = p.tolerance!
+    expect(t).toMatchObject({ kind: 'tolerance', id: TOLERANCE_BLOCK_ID, pinned: false, title: DEFAULT_TOLERANCE_TITLE })
+    expect(t.spec!.rows.length).toBe(5)
+    expect(t.rect.x + t.rect.w).toBeCloseTo(p.titleBlockRect.x + p.titleBlockRect.w, 6)
+    expect(t.rect.y + t.rect.h + TABLE_GAP).toBeCloseTo(p.titleBlockRect.y, 6)
+    for (const b of [...p.tables, ...p.pictures, p.bom]) expect(inter(t.rect, b.rect)).toBe(false)
+    expect(p.warnings).toEqual(planBoard(demoDocument(), A1).warnings)
+  })
+
+  it('moves on to beside the BOM block when the spot above the title block is taken', () => {
+    // On A3 the B+ lug's pinout table sits right above the title block.
+    const p = planBoard(withTable(), A3)
+    const t = p.tolerance!
+    expect(t.rect.x).toBeCloseTo(p.bom.rect.x + p.bom.rect.w + TABLE_GAP, 6)
+    expect(t.rect.y).toBeCloseTo(p.bom.rect.y, 6)
+    for (const b of [...p.tables, ...p.pictures, p.bom]) expect(inter(t.rect, b.rect)).toBe(false)
+    expect(p.warnings).toEqual(planBoard(demoDocument(), A3).warnings)
+  })
+
+  it('a pinned block is taken verbatim, and is flagged once it is off the sheet', () => {
+    const d = withTable()
+    d.drawing.blocks = { tolerance: { x: -5000, y: -5000 } }
+    const p = planBoard(d, A3)
+    expect(p.tolerance!.pinned).toBe(true)
+    expect(p.tolerance!.rect).toMatchObject({ x: -5000, y: -5000 })
+    expect(p.warnings).toContain('outside-sheet:block:tolerance:tolerance')
+    expect(p.warnings.filter((w) => w.startsWith('table-'))).toEqual([])
   })
 })

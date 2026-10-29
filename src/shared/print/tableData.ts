@@ -1,10 +1,22 @@
 /**
  * Table data adapters: HarnessDocument → display rows for the BOM / Wiring
- * Table / Cutlist pages and the per-connector pinout tables. Pure data → Row[]
+ * Table / Cutlist pages, the per-connector pinout tables and the sheet's
+ * length-tolerance block. Pure data → Row[]
  * mapping; no SVG here (see tables.ts for rendering, drawingSet.ts for layout).
  */
-import type { HarnessDocument, Id, Gauge, Endpoint, Wire, Cable } from '../model/schema'
-import { fitColumns, TABLE_STYLE_SHEET, type Column, type Row } from './tables'
+import type {
+  HarnessDocument,
+  Id,
+  Gauge,
+  Endpoint,
+  Wire,
+  Cable,
+  LengthToleranceBand,
+  ToleranceTable
+} from '../model/schema'
+import { DEFAULT_TOLERANCE_TITLE } from '../model/schema'
+import { fitColumns, tableWidth, TABLE_STYLE_SHEET, type Column, type Row } from './tables'
+import { estimateTextWidthMm } from './text'
 import { colorName } from '../model/colors'
 import {
   computeBom,
@@ -398,4 +410,56 @@ export function connectorPinouts(doc: HarnessDocument): ConnectorPinout[] {
   }
 
   return result
+}
+
+// ──────────────────────────── Length tolerance ──────────────────────────────
+
+const TOLERANCE_COLS: Column[] = [
+  { key: 'length', title: 'Length', wMm: 22 },
+  { key: 'tolerance', title: 'Tolerance', wMm: 22 }
+]
+
+/** The bands shortest first; a band with no upper end (everything longer) goes last. */
+export function sortedToleranceBands(bands: LengthToleranceBand[]): LengthToleranceBand[] {
+  return [...bands].sort((a, b) => (a.upToMm ?? Infinity) - (b.upToMm ?? Infinity))
+}
+
+/** A tolerance or length figure, to 2 decimals at most: `25`, `0.5`. */
+const figure = (v: number): string => String(Math.round(v * 100) / 100)
+
+/** `± 5 mm` when both ways are equal, else `+25 / −0 mm`. */
+export function formatTolerance(b: LengthToleranceBand): string {
+  return b.plus === b.minus
+    ? `± ${figure(b.plus)} ${b.unit}`
+    : `+${figure(b.plus)} / −${figure(b.minus)} ${b.unit}`
+}
+
+/** The length range a band covers, given the upper end of the band before it. */
+function bandRange(b: LengthToleranceBand, from: number | undefined): string {
+  if (b.upToMm === undefined) return from === undefined ? 'All lengths' : `> ${figure(from)} mm`
+  return from === undefined ? `≤ ${figure(b.upToMm)} mm` : `> ${figure(from)} to ${figure(b.upToMm)} mm`
+}
+
+/**
+ * The sheet's length-tolerance block: Length | Tolerance, one row per band,
+ * shortest first. The Tolerance column also widens until the banner title
+ * fits, since `renderTable` draws the title unclipped across the table.
+ */
+export function toleranceSheetTable(table: ToleranceTable): TableSpec {
+  let from: number | undefined
+  const rows: Row[] = sortedToleranceBands(table.bands).map((b) => {
+    const row = { length: bandRange(b, from), tolerance: formatTolerance(b) }
+    from = b.upToMm ?? from
+    return row
+  })
+  const style = TABLE_STYLE_SHEET
+  const cols = fitColumns(TOLERANCE_COLS, rows, style, ['length', 'tolerance'])
+  // The banner is bold at 1.15× the body size; +10 % for the bold glyphs, +1 mm slack as in fitColumns.
+  const title = table.title ?? DEFAULT_TOLERANCE_TITLE
+  const short = estimateTextWidthMm(title, style.fontMm * 1.15) * 1.1 + 2 * style.pad + 1 - tableWidth(cols)
+  if (short <= 0) return { cols, rows }
+  return {
+    cols: cols.map((c) => (c.key === 'tolerance' ? { ...c, wMm: Math.ceil((c.wMm + short) * 2) / 2 } : c)),
+    rows
+  }
 }

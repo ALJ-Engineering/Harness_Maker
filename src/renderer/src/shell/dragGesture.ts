@@ -47,6 +47,7 @@ export function dragOutcome(
         n.type !== 'label' &&
         n.type !== 'pinoutTable' &&
         n.type !== 'bomBlock' &&
+        n.type !== 'toleranceBlock' &&
         n.type !== 'pictureBlock' &&
         n.type !== 'formboardSheet'
     )
@@ -85,16 +86,23 @@ export function dragOutcome(
       }
     }
   }
-  // Board furniture: dragging a pinout table, a part picture or the BOM
-  // block PINS it — the plan then takes that mm position verbatim. Their
-  // node ids carry reserved prefixes (`tbl:` / `pic:` / `__bom`) that are
-  // NOT entity ids, so they must never reach `nodeMoves` (which writes
-  // placements by refId).
+  // Board furniture: dragging a pinout table, a part picture, the BOM block or
+  // the tolerance block PINS it — the plan then takes that mm position
+  // verbatim. Their node ids carry reserved prefixes (`tbl:` / `pic:` /
+  // `__bom` / `__tolerance`) that are NOT entity ids, so they must never reach
+  // `nodeMoves` (which writes placements by refId).
   const blockMoves: BlockMove[] = dragged
-    .filter((n) => n.type === 'pinoutTable' || n.type === 'bomBlock' || n.type === 'pictureBlock')
+    .filter(
+      (n) =>
+        n.type === 'pinoutTable' ||
+        n.type === 'bomBlock' ||
+        n.type === 'toleranceBlock' ||
+        n.type === 'pictureBlock'
+    )
     .map((n) => {
       const pos = { x: n.position.x, y: n.position.y }
       if (n.type === 'bomBlock') return { kind: 'bom', pos }
+      if (n.type === 'toleranceBlock') return { kind: 'tolerance', pos }
       if (n.type === 'pictureBlock') return { kind: 'picture', id: n.id.slice('pic:'.length), pos }
       return { kind: 'pinout', id: n.id.slice('tbl:'.length), pos }
     })

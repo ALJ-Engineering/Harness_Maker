@@ -25,7 +25,8 @@ sleeving and branch breakouts.
   cavities, splice and branch-point degree, unrouted wires, dangling references, gauge and colour
   mismatches across a net, limbs drawn off scale, bodies outside the sheet and stale part numbers.
 - **One PDF drawing set.** One fixed drawing sheet printed at exactly 1:1 (A4–A0 or a 914 mm
-  plotter roll up to 5 m long), with pinout tables, part pictures, BOM block and title block, followed
+  plotter roll up to 5 m long), with pinout tables, part pictures, BOM block, an optional length-tolerance table
+  (IPC/WHMA-A-620 values to start with, editable) and title block, followed
   by A4 BOM, wiring-table and cut-list pages. Never scaled to fit. BOM and cut list are also
   available as CSV.
 - **Parts library.** Parts live in a folder you choose: one JSON record per manufacturer part

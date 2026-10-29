@@ -7,7 +7,7 @@ import {
   migrateTitleBlock
 } from './serialize'
 import { demoDocument, emptyDocument } from './document'
-import { SCHEMA_VERSION, DEFAULT_SHEET } from './schema'
+import { SCHEMA_VERSION, DEFAULT_SHEET, IPC_620_LENGTH_TOLERANCE } from './schema'
 import { routeConnected } from './geometry'
 import { sheetMm } from '../print/sheet'
 
@@ -209,8 +209,8 @@ describe('schema-version gate (item 5)', () => {
   })
 
   it('migrates an older minor version and stamps the current one', () => {
-    expect(parseDocument('{"schemaVersion":"0.1.0"}').schemaVersion).toBe('0.6.1')
-    expect(SCHEMA_VERSION).toBe('0.6.1')
+    expect(parseDocument('{"schemaVersion":"0.1.0"}').schemaVersion).toBe('0.6.2')
+    expect(SCHEMA_VERSION).toBe('0.6.2')
   })
 })
 
@@ -254,7 +254,7 @@ describe('drawing.blocks', () => {
     const d = emptyDocument()
     const text = serializeDocument({ ...d, schemaVersion: '0.2.0' })
     const { doc, migrated } = parseDocumentWithNotes(text)
-    expect(doc.schemaVersion).toBe('0.6.1')
+    expect(doc.schemaVersion).toBe('0.6.2')
     expect(doc.drawing.blocks).toBeUndefined()
     expect(migrated).toEqual([])
   })
@@ -317,7 +317,7 @@ describe('0.3 → 0.4 migration: body-keyed route nodes', () => {
 
   it('re-keys segment ends to bodies and coalesces the coincident pair', () => {
     const { doc, migrated } = parseDocumentWithNotes(legacy())
-    expect(doc.schemaVersion).toBe('0.6.1')
+    expect(doc.schemaVersion).toBe('0.6.2')
     expect(doc.segments).toEqual([{ id: 's1', from: { type: 'body', refId: 'x1' }, to: { type: 'body', refId: 'ft' } }])
     expect(doc.wireRoutes).toEqual([{ wireId: 'w1', path: ['s1'] }, { wireId: 'w2', path: ['s1'] }])
     expect(doc.bundles[0].segmentIds).toEqual(['s1'])
@@ -464,7 +464,7 @@ describe('designator backfill', () => {
     )
     expect(doc.freeTerminals[0].designator).toBe('T1')
     expect(doc.splices.map((s) => s.designator)).toEqual(['SP1', 'SP2'])
-    expect(doc.schemaVersion).toBe('0.6.1')
+    expect(doc.schemaVersion).toBe('0.6.2')
     expect(migrated.filter((m) => m.startsWith('designators'))).toEqual([NOTE(3)])
   })
   it('a blank designator in a 0.5.0 file is backfilled', () => {
@@ -505,5 +505,51 @@ describe('Segment.specifiedLengthMm persistence', () => {
     const { doc, migrated } = parseDocumentWithNotes(serializeDocument(d))
     expect(doc.segments[0].specifiedLengthMm).toBe(370)
     expect(migrated).toEqual([])
+  })
+})
+
+describe('drawing.toleranceTable (0.6.2)', () => {
+  it('round-trips, with its pinned position, and a file without one loads without one', () => {
+    const d = emptyDocument()
+    d.drawing.toleranceTable = { title: 'Lengths', bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) }
+    d.drawing.blocks = { tolerance: { x: 12, y: 34 } }
+    const { doc, migrated } = parseDocumentWithNotes(serializeDocument(d))
+    expect(doc.drawing.toleranceTable).toEqual(d.drawing.toleranceTable)
+    expect(doc.drawing.blocks).toEqual({ tolerance: { x: 12, y: 34 } })
+    expect(migrated).toEqual([])
+    expect(parseDocument(serializeDocument(emptyDocument())).drawing.toleranceTable).toBeUndefined()
+  })
+
+  it('drops a bad band and a blank title, not the table, with one note', () => {
+    const d = emptyDocument()
+    d.drawing.toleranceTable = {
+      title: '  ',
+      bands: [
+        { upToMm: 300, plus: 25, minus: 0, unit: 'mm' },
+        { upToMm: -1, plus: 5, minus: 0, unit: 'mm' },
+        { plus: 5, minus: 0, unit: 'in' as 'mm' },
+        { plus: 5, minus: 0, unit: '%' }
+      ]
+    }
+    const { doc, migrated } = parseDocumentWithNotes(serializeDocument(d))
+    expect(doc.drawing.toleranceTable).toEqual({
+      bands: [
+        { upToMm: 300, plus: 25, minus: 0, unit: 'mm' },
+        { plus: 5, minus: 0, unit: '%' }
+      ]
+    })
+    expect(migrated).toEqual(['invalid length-tolerance entry dropped'])
+  })
+
+  it('drops a table that is not an object or has no bands array, and a non-finite pin', () => {
+    const text = serializeDocument(emptyDocument()).replace(
+      '"drawing": {',
+      '"drawing": {"toleranceTable":{"bands":"none"},"blocks":{"tolerance":{"x":null,"y":1}},'
+    )
+    const { doc, migrated } = parseDocumentWithNotes(text)
+    expect(doc.drawing.toleranceTable).toBeUndefined()
+    expect(doc.drawing.blocks).toBeUndefined()
+    expect(migrated).toContain('invalid length-tolerance entry dropped')
+    expect(migrated).toContain('invalid drawing-block position dropped')
   })
 })

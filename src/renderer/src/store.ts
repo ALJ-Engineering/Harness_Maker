@@ -17,7 +17,8 @@ import type {
   PictureView,
   RouteNode,
   SheetConfig,
-  TitleBlock
+  TitleBlock,
+  ToleranceTable
 } from '@shared/model/schema'
 import { demoDocument, emptyDocument } from '@shared/model/document'
 import { newId } from '@shared/model/ids'
@@ -59,9 +60,9 @@ export type PaneView = 'schematic' | 'formboard'
 
 /**
  * Which drawing block a pin/clear targets — a pinout table (a connector's OR a free
- * terminal's), the BOM block, or a body's part picture.
+ * terminal's), the BOM block, the length-tolerance block, or a body's part picture.
  */
-export type BlockKind = 'pinout' | 'bom' | 'picture'
+export type BlockKind = 'pinout' | 'bom' | 'tolerance' | 'picture'
 /**
  * A pinned drawing-block position. For `'pinout'` and `'picture'`, `id` is
  * required. A pinout's id is the CONNECTOR OR FREE-TERMINAL id —
@@ -445,11 +446,20 @@ export interface HarnessState {
   setTitleBlock: (patch: Partial<TitleBlock>) => void
 
   /**
+   * Replace the drawing's length-tolerance table (`doc.drawing.toleranceTable`);
+   * `undefined` takes it off the sheet, together with its pinned position. One
+   * atomic undoable edit; a no-op (no history entry) if nothing changes.
+   */
+  setToleranceTable: (table: ToleranceTable | undefined) => void
+
+  /**
    * Pin a drawing block's top-left (`doc.drawing.blocks`) — a pinout table for
-   * a connector or a free terminal (`kind: 'pinout'`, `id` required) or the BOM
-   * summary block (`kind: 'bom'`). One atomic undoable edit; a no-op (no history
-   * entry) if the position is already stored, or (for `'pinout'`) `id` is missing
-   * or references neither a connector nor a free terminal.
+   * a connector or a free terminal (`kind: 'pinout'`, `id` required), the BOM
+   * summary block (`kind: 'bom'`) or the length-tolerance block (`kind:
+   * 'tolerance'`). One atomic undoable edit; a no-op (no history entry) if the
+   * position is already stored, (for `'pinout'`) `id` is missing or references
+   * neither a connector nor a free terminal, or (for `'tolerance'`) the drawing
+   * has no tolerance table.
    */
   setBlockPos: (move: BlockMove) => void
   /**
@@ -917,6 +927,7 @@ function effectiveBlockMoves(doc: HarnessDocument, moves: BlockMove[]): BlockMov
   return moves.filter((m) => {
     const blocks = doc.drawing.blocks
     if (m.kind === 'bom') return !posEq(blocks?.bom, m.pos)
+    if (m.kind === 'tolerance') return !!doc.drawing.toleranceTable && !posEq(blocks?.tolerance, m.pos)
     const ids = m.kind === 'picture' ? pictureIds : tableIds
     if (!m.id || !ids.has(m.id)) return false
     const cur = m.kind === 'picture' ? blocks?.picture?.[m.id] : blocks?.pinout?.[m.id]
@@ -930,6 +941,7 @@ function applyBlockMoves(d: Draft<HarnessDocument>, moves: BlockMove[]): void {
   for (const m of moves) {
     d.drawing.blocks ??= {}
     if (m.kind === 'bom') d.drawing.blocks.bom = { ...m.pos }
+    else if (m.kind === 'tolerance') d.drawing.blocks.tolerance = { ...m.pos }
     else if (m.kind === 'picture') {
       d.drawing.blocks.picture ??= {}
       d.drawing.blocks.picture[m.id!] = { ...m.pos }
@@ -938,6 +950,12 @@ function applyBlockMoves(d: Draft<HarnessDocument>, moves: BlockMove[]): void {
       d.drawing.blocks.pinout[m.id!] = { ...m.pos }
     }
   }
+}
+
+/** Drop `drawing.blocks` once nothing is left in it, so a document with no pins stays clean. */
+function dropEmptyBlocks(d: Draft<HarnessDocument>): void {
+  const blk = d.drawing.blocks
+  if (blk && !blk.bom && !blk.tolerance && !blk.pinout && !blk.picture && !blk.pictureView) delete d.drawing.blocks
 }
 
 // The demo gets an origin that frames it, like any new document (spec §1).
@@ -1535,6 +1553,20 @@ export const useHarnessStore = create<HarnessState>()(
       })
     },
 
+    setToleranceTable: (table) => {
+      const current = get().doc.drawing.toleranceTable
+      if (JSON.stringify(table) === JSON.stringify(current)) return
+      get().applyEdit((d) => {
+        if (table) {
+          d.drawing.toleranceTable = { ...table, bands: table.bands.map((b) => ({ ...b })) }
+          return
+        }
+        delete d.drawing.toleranceTable
+        if (d.drawing.blocks) delete d.drawing.blocks.tolerance
+        dropEmptyBlocks(d)
+      })
+    },
+
     setBlockPos: (move) => {
       const eff = effectiveBlockMoves(get().doc, [move])
       if (!eff.length) return
@@ -1544,11 +1576,17 @@ export const useHarnessStore = create<HarnessState>()(
     clearBlockPos: (kind, id) => {
       const b = get().doc.drawing.blocks
       const keyed = kind === 'picture' ? b?.picture : b?.pinout
-      const present = kind === 'bom' ? b?.bom !== undefined : id !== undefined && keyed?.[id] !== undefined
+      const present =
+        kind === 'bom'
+          ? b?.bom !== undefined
+          : kind === 'tolerance'
+            ? b?.tolerance !== undefined
+            : id !== undefined && keyed?.[id] !== undefined
       if (!present) return
       get().applyEdit((d) => {
         const blk = d.drawing.blocks!
         if (kind === 'bom') delete blk.bom
+        else if (kind === 'tolerance') delete blk.tolerance
         else if (kind === 'picture') {
           delete blk.picture![id!]
           if (!Object.keys(blk.picture!).length) delete blk.picture
@@ -1556,7 +1594,7 @@ export const useHarnessStore = create<HarnessState>()(
           delete blk.pinout![id!]
           if (!Object.keys(blk.pinout!).length) delete blk.pinout
         }
-        if (!blk.bom && !blk.pinout && !blk.picture && !blk.pictureView) delete d.drawing.blocks
+        dropEmptyBlocks(d)
       })
     },
 
@@ -1573,7 +1611,7 @@ export const useHarnessStore = create<HarnessState>()(
           const blk = d.drawing.blocks!
           delete blk.pictureView![bodyId]
           if (!Object.keys(blk.pictureView!).length) delete blk.pictureView
-          if (!blk.bom && !blk.pinout && !blk.picture && !blk.pictureView) delete d.drawing.blocks
+          dropEmptyBlocks(d)
           return
         }
         d.drawing.blocks ??= {}

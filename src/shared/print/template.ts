@@ -98,6 +98,14 @@ function renderBlocks(plan: BoardPlan, tb: TitleBlock | undefined, branding: Pri
       renderTable(0, 0, b.spec!.cols, b.spec!.rows, TABLE_STYLE_SHEET, { title: b.title }).svg +
       `</g>`
   )
+  const tol = plan.tolerance
+  if (tol) {
+    parts.push(
+      `<g class="block" data-block="tolerance" transform="translate(${fmt(tol.rect.x)} ${fmt(tol.rect.y)})">` +
+        renderTable(0, 0, tol.spec!.cols, tol.spec!.rows, TABLE_STYLE_SHEET, { title: tol.title }).svg +
+        `</g>`
+    )
+  }
   parts.push(
     `<g class="title-block" transform="translate(${fmt(plan.titleBlockRect.x)} ${fmt(plan.titleBlockRect.y)})">` +
       renderTitleBlock(0, 0, tb, branding) +

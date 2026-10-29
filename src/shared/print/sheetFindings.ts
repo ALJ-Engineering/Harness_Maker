@@ -32,7 +32,7 @@ const nodeName = (doc: HarnessDocument, n: RouteNode): string =>
  * never silently disappears.
  *
  * Codes (see `BoardPlan.warnings`): `body` / `branch` / `segment` / `label`
- * `:<id>`, and `block:<pinout|picture|bom>:<id>`. Bodies, branch points and
+ * `:<id>`, and `block:<pinout|picture|bom|tolerance>:<id>`. Bodies, branch points and
  * segments carry a ref so the DRC panel can jump to them; labels and blocks
  * are not DRC entities and carry none.
  */
@@ -79,6 +79,7 @@ export function outsideSheetFindings(warnings: string[], doc: HarnessDocument): 
         const blockKind = id.slice(0, c2)
         const refId = id.slice(c2 + 1)
         if (blockKind === 'bom') add('BOM block', [])
+        else if (blockKind === 'tolerance') add('Length tolerance table', [])
         else if (blockKind === 'picture') add(`Picture of ${nameOf(doc, refId)}`, [])
         else if (blockKind === 'pinout') add(`Pinout table for ${nameOf(doc, refId)}`, [])
         else add(`Block ${refId}`, [])

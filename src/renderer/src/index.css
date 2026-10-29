@@ -838,6 +838,20 @@ textarea.pf__input {
   left: auto;
   right: 0;
 }
+/* Length tolerance bands: the three figures share the card, the unit select
+   and the ✕ get just what they need. */
+.cavtable--tolerance {
+  table-layout: fixed;
+}
+.cavtable--tolerance th:nth-child(4) {
+  width: 52px;
+}
+.cavtable--tolerance th:nth-child(5) {
+  width: 20px;
+}
+.tol__actions {
+  margin-top: 6px;
+}
 .cavtable__del {
   border: none;
   background: none;

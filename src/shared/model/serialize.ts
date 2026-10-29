@@ -3,12 +3,14 @@ import type {
   Endpoint,
   HarnessDocument,
   Id,
+  LengthToleranceBand,
   PaperSize,
   PictureView,
   RouteNode,
   Segment,
   SheetConfig,
   TitleBlock,
+  ToleranceTable,
   Vec2
 } from './schema'
 import { DEFAULT_SHEET, PLOTTER_DEFAULT_LENGTH_MM, PLOTTER_MAX_LENGTH_MM, PLOTTER_MIN_LENGTH_MM, SCHEMA_VERSION } from './schema'
@@ -210,7 +212,44 @@ function validateBlocks(
     if (isVec2(r.bom)) out.bom = { x: r.bom.x, y: r.bom.y }
     else dropped = true
   }
+  if (r.tolerance !== undefined) {
+    if (isVec2(r.tolerance)) out.tolerance = { x: r.tolerance.x, y: r.tolerance.y }
+    else dropped = true
+  }
   return { blocks: Object.keys(out).length ? out : undefined, dropped }
+}
+
+const isMeasure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
+
+/**
+ * Validate `drawing.toleranceTable` off disk, band by band: `plus`/`minus` must
+ * be finite and ≥ 0, `unit` `mm` or `%`, and `upToMm`, when present, finite and
+ * > 0. A bad band is dropped, not the table; a table that is not an object, or
+ * whose `bands` is not an array, is dropped whole. A blank or non-string title
+ * falls back to the default.
+ */
+function validateToleranceTable(raw: unknown): { table: ToleranceTable | undefined; dropped: boolean } {
+  if (raw === undefined) return { table: undefined, dropped: false }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { table: undefined, dropped: true }
+  const r = raw as Record<string, unknown>
+  if (!Array.isArray(r.bands)) return { table: undefined, dropped: true }
+  let dropped = false
+  const bands: LengthToleranceBand[] = []
+  for (const b of r.bands as unknown[]) {
+    const v = (typeof b === 'object' && b !== null ? b : {}) as Record<string, unknown>
+    const upOk = v.upToMm === undefined || (isMeasure(v.upToMm) && v.upToMm > 0)
+    if (!upOk || !isMeasure(v.plus) || !isMeasure(v.minus) || (v.unit !== 'mm' && v.unit !== '%')) {
+      dropped = true
+      continue
+    }
+    const band: LengthToleranceBand = { plus: v.plus, minus: v.minus, unit: v.unit }
+    if (v.upToMm !== undefined) band.upToMm = v.upToMm as number
+    bands.push(band)
+  }
+  const table: ToleranceTable = { bands }
+  if (typeof r.title === 'string' && r.title.trim()) table.title = r.title
+  else if (r.title !== undefined) dropped = true
+  return { table, dropped }
 }
 
 // ── 0.3 → 0.4: body-keyed route nodes ────────────────────────────────────────
@@ -475,7 +514,13 @@ export function parseDocumentWithNotes(text: string): ParsedDocument {
   const migrated: string[] = []
   const base = emptyDocument()
   const rawDrawing = (obj.drawing ?? {}) as Record<string, unknown>
-  const { sheets: legacySheets, titleBlock: rawTb, blocks: rawBlocks, ...restDrawing } = rawDrawing
+  const {
+    sheets: legacySheets,
+    titleBlock: rawTb,
+    toleranceTable: rawTolerance,
+    blocks: rawBlocks,
+    ...restDrawing
+  } = rawDrawing
 
   const legacySheet = Array.isArray(legacySheets) ? legacySheets[0] : undefined
   const fromLegacy = restDrawing.sheet === undefined && legacySheet !== undefined
@@ -513,6 +558,9 @@ export function parseDocumentWithNotes(text: string): ParsedDocument {
   // first of those.
   if (blk.dropped) migrated.push('invalid drawing-block position dropped')
 
+  const tol = validateToleranceTable(rawTolerance)
+  if (tol.dropped) migrated.push('invalid length-tolerance entry dropped')
+
   const doc = {
     ...base,
     ...obj,
@@ -524,6 +572,7 @@ export function parseDocumentWithNotes(text: string): ParsedDocument {
       sheet,
       ...(sheetOrigin ? { sheetOrigin } : {}),
       ...(tb.titleBlock ? { titleBlock: tb.titleBlock } : {}),
+      ...(tol.table ? { toleranceTable: tol.table } : {}),
       ...(blk.blocks ? { blocks: blk.blocks } : {})
     }
   } as HarnessDocument

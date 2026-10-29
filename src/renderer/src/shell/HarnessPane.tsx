@@ -670,10 +670,13 @@ function HarnessPaneInner({
             setMenu({ x: e.clientX, y: e.clientY, items })
             return
           }
-          // Formboard: right-click a pinned table / BOM block → give the
-          // planner it back. An auto-placed one has nothing to reset, so it
-          // gets no menu at all rather than a dead item.
-          if (mode === 'formboard' && (node.type === 'pinoutTable' || node.type === 'bomBlock')) {
+          // Formboard: right-click a pinned table / BOM / tolerance block →
+          // give the planner it back. An auto-placed one has nothing to reset,
+          // so it gets no menu at all rather than a dead item.
+          if (
+            mode === 'formboard' &&
+            (node.type === 'pinoutTable' || node.type === 'bomBlock' || node.type === 'toleranceBlock')
+          ) {
             e.preventDefault()
             if (!(node.data as { pinned: boolean }).pinned) return
             setMenu({
@@ -685,7 +688,9 @@ function HarnessPaneInner({
                   onClick: () =>
                     node.type === 'bomBlock'
                       ? clearBlockPos('bom')
-                      : clearBlockPos('pinout', node.id.slice('tbl:'.length))
+                      : node.type === 'toleranceBlock'
+                        ? clearBlockPos('tolerance')
+                        : clearBlockPos('pinout', node.id.slice('tbl:'.length))
                 }
               ]
             })

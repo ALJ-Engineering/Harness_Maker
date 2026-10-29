@@ -69,10 +69,10 @@ export interface SheetNodeData extends Record<string, unknown> {
 }
 
 export interface BlockNodeData extends Record<string, unknown> {
-  kind: 'pinout' | 'bom' | 'picture'
+  kind: 'pinout' | 'bom' | 'tolerance' | 'picture'
   /**
-   * Connector / free-terminal id (pinout), body id (picture) or `BOM_BLOCK_ID`
-   * (bom) — NOT the node id.
+   * Connector / free-terminal id (pinout), body id (picture), `BOM_BLOCK_ID`
+   * (bom) or `TOLERANCE_BLOCK_ID` (tolerance) — NOT the node id.
    */
   refId: string
   w: number
@@ -93,6 +93,7 @@ export type FlowNode =
   | (Node<SheetNodeData> & { type: 'formboardSheet' })
   | (Node<BlockNodeData> & { type: 'pinoutTable' })
   | (Node<BlockNodeData> & { type: 'bomBlock' })
+  | (Node<BlockNodeData> & { type: 'toleranceBlock' })
   | (Node<BlockNodeData> & { type: 'pictureBlock' })
 
 /**

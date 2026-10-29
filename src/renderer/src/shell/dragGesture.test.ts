@@ -39,7 +39,8 @@ describe('dragOutcome', () => {
       node('lab-anch', 'label', 200, 62), // near seg-1 (y = 60), off its midpoint
       node('tbl:conn-x1', 'pinoutTable', 1, 2),
       node('pic:conn-x1', 'pictureBlock', 3, 4),
-      node('__bom', 'bomBlock', 5, 6)
+      node('__bom', 'bomBlock', 5, 6),
+      node('__tolerance', 'toleranceBlock', 7, 8)
     ])
     expect(out.kind).toBe('gesture')
     if (out.kind !== 'gesture') return
@@ -55,7 +56,8 @@ describe('dragOutcome', () => {
     expect(g.blockMoves).toEqual([
       { kind: 'pinout', id: 'conn-x1', pos: { x: 1, y: 2 } },
       { kind: 'picture', id: 'conn-x1', pos: { x: 3, y: 4 } },
-      { kind: 'bom', pos: { x: 5, y: 6 } }
+      { kind: 'bom', pos: { x: 5, y: 6 } },
+      { kind: 'tolerance', pos: { x: 7, y: 8 } }
     ])
   })
 

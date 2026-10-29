@@ -204,6 +204,28 @@ export interface DrawingBlocks {
    * be rotated, and pinning one must not freeze its orientation.
    */
   pictureView?: Record<Id, PictureView>
+  /** Pinned top-left of the length-tolerance block, MODEL mm. */
+  tolerance?: Vec2
+}
+
+/**
+ * One band of the length-tolerance table: a wire up to `upToMm` long
+ * (inclusive; absent = everything longer than the band before) may be `plus`
+ * longer and `minus` shorter than drawn, in mm, or with `unit: '%'` in percent
+ * of its length.
+ */
+export interface LengthToleranceBand {
+  upToMm?: Mm
+  plus: number
+  minus: number
+  unit: 'mm' | '%'
+}
+
+/** The length-tolerance table printed on the drawing sheet. */
+export interface ToleranceTable {
+  /** Banner text. Absent = `DEFAULT_TOLERANCE_TITLE`. */
+  title?: string
+  bands: LengthToleranceBand[]
 }
 
 export interface DrawingConfig {
@@ -216,6 +238,8 @@ export interface DrawingConfig {
   /** @deprecated read-only compatibility; never written. */
   sheets?: SheetConfig[]
   titleBlock?: TitleBlock
+  /** Absent = no tolerance table on the sheet. */
+  toleranceTable?: ToleranceTable
   blocks?: DrawingBlocks
 }
 
@@ -368,7 +392,7 @@ export interface HarnessDocument {
   labels: Label[]
 }
 
-export const SCHEMA_VERSION = '0.6.1'
+export const SCHEMA_VERSION = '0.6.2'
 
 /** Plotter roll: fixed width, document-chosen length (mm). */
 export const PLOTTER_ROLL_WIDTH_MM = 914
@@ -380,3 +404,18 @@ export const PLOTTER_MAX_LENGTH_MM = 5000
 export const DEFAULT_SHEET: SheetConfig = { paper: 'A3', orientation: 'landscape' }
 export const DEFAULT_CONFIDENTIALITY =
   'This document contains confidential and proprietary information. It may not be reproduced or disclosed, in whole or in part, without written authorization.'
+
+export const DEFAULT_TOLERANCE_TITLE = 'Length tolerance (IPC/WHMA-A-620)'
+/**
+ * The cable/wire length tolerances of IPC/WHMA-A-620 (Table 11-1): never
+ * shorter than drawn, and longer by at most 25 mm up to 300 mm, 50 mm up to
+ * 1.5 m, 100 mm up to 3 m, 150 mm up to 7.5 m and 5 % beyond. The table a
+ * drawing starts with when the user turns it on.
+ */
+export const IPC_620_LENGTH_TOLERANCE: LengthToleranceBand[] = [
+  { upToMm: 300, plus: 25, minus: 0, unit: 'mm' },
+  { upToMm: 1500, plus: 50, minus: 0, unit: 'mm' },
+  { upToMm: 3000, plus: 100, minus: 0, unit: 'mm' },
+  { upToMm: 7500, plus: 150, minus: 0, unit: 'mm' },
+  { plus: 5, minus: 0, unit: '%' }
+]

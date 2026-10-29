@@ -3,6 +3,7 @@ import { Field, TextEdit, SelectEdit, NumberEdit } from './fields'
 import type { HarnessDocument, PaperSize, Approval } from '@shared/model/schema'
 import { DEFAULT_CONFIDENTIALITY, PLOTTER_MAX_LENGTH_MM, PLOTTER_MIN_LENGTH_MM, PLOTTER_ROLL_WIDTH_MM } from '@shared/model/schema'
 import { plotterLengthMm, withPaper } from './sheetEdit'
+import { ToleranceProperties } from './ToleranceProperties'
 
 const PAPER_OPTS: { value: PaperSize; label: string }[] = [
   { value: 'A4', label: 'A4' },
@@ -32,9 +33,10 @@ const APPROVAL_ROWS: { key: ApprovalKey; label: string }[] = [
  * (paper + orientation, and the roll length for the plotter — the one sheet the
  * formboard shows and the PDF prints; it grows right and down from its pinned
  * top-left, `drawing.sheetOrigin`, which nothing here touches) and the
- * title-block form. All fields go through `setSheet`/`setTitleBlock` — a
- * committed empty string clears the field (stored as `undefined`) rather than
- * persisting `""`, so the block stays clean for export/print.
+ * title-block form, then the length-tolerance table (`ToleranceProperties`).
+ * All fields go through `setSheet`/`setTitleBlock` — a committed empty string
+ * clears the field (stored as `undefined`) rather than persisting `""`, so the
+ * block stays clean for export/print.
  */
 export function DocumentProperties({ doc }: { doc: HarnessDocument }): React.JSX.Element {
   const setSheet = useHarnessStore((s) => s.setSheet)
@@ -146,6 +148,8 @@ export function DocumentProperties({ doc }: { doc: HarnessDocument }): React.JSX
           onCommit={setField('confidentiality')}
         />
       </Field>
+
+      <ToleranceProperties table={doc.drawing.toleranceTable} />
     </div>
   )
 }

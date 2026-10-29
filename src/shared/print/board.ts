@@ -52,7 +52,8 @@
  * `TEMPLATE_GUTTER` and `TILE_STRIP_H` live here and `template.ts` re-exports
  * them, so there is exactly one definition of each.
  */
-import type { HarnessDocument, Id, Vec2 } from '../model/schema'
+import type { HarnessDocument, Id, ToleranceTable, Vec2 } from '../model/schema'
+import { DEFAULT_TOLERANCE_TITLE } from '../model/schema'
 import {
   computeFormboard,
   lengthLabel,
@@ -75,7 +76,13 @@ import {
   type Row,
   type TableStyle
 } from './tables'
-import { bomSheetTable, connectorPinouts, type ConnectorPinout, type TableSpec } from './tableData'
+import {
+  bomSheetTable,
+  connectorPinouts,
+  toleranceSheetTable,
+  type ConnectorPinout,
+  type TableSpec
+} from './tableData'
 import { isIdentityView, normaliseView, pictureBlockSize, type PartImage, type PartImages } from './picture'
 import type { PictureView } from '../model/schema'
 import { primaryPartNumber } from '../model/bodyParts'
@@ -95,12 +102,13 @@ export type { PictureView } from '../model/schema'
 
 // ── Public shape ─────────────────────────────────────────────────────────────
 
-/** A planned drawing block (pinout table, BOM summary or part picture) in MODEL mm. */
+/** A planned drawing block (pinout table, BOM summary, length tolerances or part picture) in MODEL mm. */
 export interface PlacedBlock {
-  kind: 'pinout' | 'bom' | 'picture'
+  kind: 'pinout' | 'bom' | 'tolerance' | 'picture'
   /**
-   * Pinout: connector / free-terminal id. BOM: `BOM_BLOCK_ID`. Picture: the
-   * body id (connector, free terminal or splice).
+   * Pinout: connector / free-terminal id. BOM: `BOM_BLOCK_ID`. Tolerance:
+   * `TOLERANCE_BLOCK_ID`. Picture: the body id (connector, free terminal or
+   * splice).
    */
   id: Id
   rect: Rect
@@ -144,6 +152,8 @@ export interface BoardPlan {
   sheetRect: Rect
   tables: PlacedBlock[]
   bom: PlacedBlock
+  /** The length-tolerance block; absent when the drawing has no `toleranceTable`. */
+  tolerance?: PlacedBlock
   /** One part-picture block per body whose primary part has an image. */
   pictures: PlacedBlock[]
   /**
@@ -167,8 +177,9 @@ export interface BoardPlan {
    * so it will be cut off the print. `kind` is `body` / `branch` (the dot's
    * position), `segment` (either end), `label` (its resolved position) or
    * `block` — its rect; the code is `outside-sheet:block:<kind>:<id>` with
-   * `kind` = `PlacedBlock.kind` (`pinout` / `picture` / `bom`) because a body's
-   * pinout table and its picture share the body id (BOM: `block:bom:bom`).
+   * `kind` = `PlacedBlock.kind` (`pinout` / `picture` / `bom` / `tolerance`)
+   * because a body's pinout table and its picture share the body id (BOM:
+   * `block:bom:bom`, tolerances: `block:tolerance:tolerance`).
    * All re-derived from the final geometry, so none of them can go stale.
    */
   warnings: string[]
@@ -176,6 +187,8 @@ export interface BoardPlan {
 
 /** `PlacedBlock.id` of the BOM summary block. */
 export const BOM_BLOCK_ID = 'bom'
+/** `PlacedBlock.id` of the length-tolerance block. */
+export const TOLERANCE_BLOCK_ID = 'tolerance'
 
 /** mm of white space kept around the content bbox on all sides (content-space gutter). */
 export const TEMPLATE_GUTTER = 15
@@ -761,6 +774,56 @@ function planBom(
 }
 
 /**
+ * The length-tolerance block, at its natural size (a handful of rows, so it is
+ * never truncated). Default position: right above the title block, flush with
+ * its right edge — where a drawing's general tolerances are looked for — then
+ * beside the BOM block, then the sheet's free corners (top-right, top-left,
+ * bottom-left); the first spot inside `bounds` and clear of every block, body
+ * and wire wins, else the first. Like the BOM block it carries no positional
+ * meaning, so it is only flagged when it leaves the sheet, never for an overlap.
+ */
+function planTolerance(
+  table: ToleranceTable,
+  obstacles: Rect[],
+  layout: FbLayout,
+  pin: Vec2 | undefined,
+  bounds: Rect,
+  titleBlock: Rect,
+  bom: Rect
+): PlacedBlock {
+  const spec = toleranceSheetTable(table)
+  const w = tableWidth(spec.cols)
+  const h = tableHeight(spec, TABLE_STYLE_SHEET, true)
+  const aboveTitle: Rect = { x: titleBlock.x + titleBlock.w - w, y: titleBlock.y - TABLE_GAP - h, w, h }
+  let rect: Rect = pin ? { x: pin.x, y: pin.y, w, h } : aboveTitle
+  if (!pin) {
+    const wires = wireObstacles(layout)
+    const bodies = bodyObstacles(layout)
+    const clear = (r: Rect): boolean =>
+      inside(r, bounds) &&
+      !obstacles.some((o) => collides(r, o)) &&
+      !bodies.some((b) => collides(r, b)) &&
+      !hitsWire(r, wires)
+    const candidates: Rect[] = [
+      aboveTitle,
+      { x: bom.x + bom.w + TABLE_GAP, y: bom.y, w, h },
+      { x: bounds.x + bounds.w - w, y: bounds.y, w, h },
+      { x: bounds.x, y: bounds.y, w, h },
+      { x: bounds.x, y: bounds.y + bounds.h - h, w, h }
+    ]
+    rect = candidates.find(clear) ?? aboveTitle
+  }
+  return {
+    kind: 'tolerance',
+    id: TOLERANCE_BLOCK_ID,
+    rect,
+    spec,
+    pinned: !!pin,
+    title: table.title ?? DEFAULT_TOLERANCE_TITLE
+  }
+}
+
+/**
  * The sheet origin that frames the HARNESS: its bbox (bodies, branch points,
  * labels — never the blocks) less `TEMPLATE_GUTTER` on the top and left. This
  * is where the sheet sits while `drawing.sheetOrigin` is absent, and the value
@@ -771,8 +834,9 @@ export function framedSheetOrigin(layout: FbLayout): Vec2 {
 }
 
 /**
- * Plan the whole 1:1 board: pinout tables, part pictures, BOM block, the one
- * drawing sheet and its title block, all in model mm. `layout` is injectable so
+ * Plan the whole 1:1 board: pinout tables, part pictures, BOM block, the
+ * length-tolerance block (when the drawing has one), the one drawing sheet and
+ * its title block, all in model mm. `layout` is injectable so
  * a caller that already ran `computeFormboard` does not pay for it twice.
  * `images` is the part photo library keyed by part number — the default empty
  * map means no picture blocks at all.
@@ -817,17 +881,29 @@ export function planBoard(
     doc.drawing.blocks?.bom,
     sheetRect
   )
+  const toleranceTable = doc.drawing.toleranceTable
+  const tolerance = toleranceTable
+    ? planTolerance(
+        toleranceTable,
+        [...tables.map((t) => t.rect), ...pictures.map((p) => p.rect), ...extra, bom.rect],
+        layout,
+        doc.drawing.blocks?.tolerance,
+        sheetRect,
+        titleBlockRect,
+        bom.rect
+      )
+    : undefined
 
   // ── Warnings, from the final geometry ─────────────────────────────────────
   const warnings: string[] = []
   const bodies = bodyObstacles(layout)
   const wires = wireObstacles(layout)
-  const all = [...tables, ...pictures, bom]
+  const all = [...tables, ...pictures, bom, ...(tolerance ? [tolerance] : [])]
   all.forEach((t, i) => {
-    // The BOM block carries no positional meaning, so an overlap there is a
-    // cosmetic nuisance the user drags away, not a wrong drawing (see
-    // `planBom`). A table or a picture belongs to a specific body, so it is.
-    if (t.kind === 'bom') return
+    // The BOM and tolerance blocks carry no positional meaning, so an overlap
+    // there is a cosmetic nuisance the user drags away, not a wrong drawing
+    // (see `planBom`). A table or a picture belongs to a specific body, so it is.
+    if (t.kind === 'bom' || t.kind === 'tolerance') return
     const hitsBody = bodies.some((b) => collides(t.rect, b))
     const hitsOther = all.some((o, j) => j !== i && collides(t.rect, o.rect))
     if (hitsBody || hitsOther) warnings.push(`table-overlap:${t.id}`)
@@ -875,6 +951,7 @@ export function planBoard(
     sheetRect,
     tables,
     bom,
+    ...(tolerance ? { tolerance } : {}),
     pictures,
     bodiesWithoutPicture: without,
     titleBlockRect,

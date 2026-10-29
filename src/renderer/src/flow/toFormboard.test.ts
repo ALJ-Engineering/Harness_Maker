@@ -9,6 +9,7 @@ import { renderBoardPage } from '@shared/print/template'
 import { computeFormboard } from '@shared/model/formboard'
 import { demoDocument, emptyDocument } from '@shared/model/document'
 import type { HarnessDocument } from '@shared/model/schema'
+import { IPC_620_LENGTH_TOLERANCE } from '@shared/model/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -442,6 +443,23 @@ describe('board furniture', () => {
     )
     for (const id of ['__sheet', '__bom', `tbl:${t0.id}`])
       expect(nodes.find((n) => n.id === id)!.deletable).toBe(false)
+  })
+
+  it('a tolerance table gets a toleranceBlock node that the printed page draws too', () => {
+    const d = demoDocument()
+    expect(documentToFormboard(d).nodes.some((n) => n.type === 'toleranceBlock')).toBe(false)
+    d.drawing.toleranceTable = { bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) }
+    const layout = computeFormboard(d)
+    const plan = planBoard(d, sheetMm(d.drawing.sheet), layout)
+    const tol = plan.tolerance!
+    const n = documentToFormboard(d).nodes.find((x) => x.type === 'toleranceBlock')!
+    expect(n.id).toBe('__tolerance')
+    expect(n.deletable).toBe(false)
+    expect(n.position).toEqual({ x: tol.rect.x, y: tol.rect.y })
+    const svg = renderTable(0, 0, tol.spec!.cols, tol.spec!.rows, TABLE_STYLE_SHEET, { title: tol.title }).svg
+    expect((n.data as BlockNodeData).svg).toBe(svg)
+    const page = renderBoardPage(d, plan, {}, layout, { pageNoStart: 1, pageCount: 1 }).svg
+    expect(page).toContain(`data-block="tolerance" transform="translate(${tol.rect.x} ${tol.rect.y})">${svg}</g>`)
   })
 
   it('a body with a part image gets a pictureBlock node whose SVG IS the printed one', () => {

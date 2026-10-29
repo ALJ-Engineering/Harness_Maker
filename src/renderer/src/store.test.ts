@@ -3,6 +3,7 @@ import { useHarnessStore } from './store'
 import { emptyDocument, demoDocument } from '@shared/model/document'
 import { routeConnected, wireLength } from '@shared/model/geometry'
 import type { HarnessDocument } from '@shared/model/schema'
+import { IPC_620_LENGTH_TOLERANCE } from '@shared/model/schema'
 import { newLibraryPart, type LibraryPart } from '@shared/parts/librarySchema'
 import { LibraryCatalog } from '@shared/parts/catalog'
 import { runDrc } from '@shared/drc'
@@ -2657,5 +2658,47 @@ describe('addCableFromPart', () => {
     s().undo()
     expect(s().doc.wires).toHaveLength(before)
     expect(s().doc.cables).toHaveLength(0)
+  })
+})
+
+describe('length-tolerance table', () => {
+  const ipc = () => ({ bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) })
+
+  it('setToleranceTable puts it on the drawing in one undo step, and no-ops on the same table', () => {
+    s().setDocument(demoDocument(), null)
+    const before = s().past.length
+    s().setToleranceTable(ipc())
+    expect(s().doc.drawing.toleranceTable).toEqual(ipc())
+    expect(s().past.length).toBe(before + 1)
+    s().setToleranceTable(ipc())
+    expect(s().past.length).toBe(before + 1)
+    s().undo()
+    expect(s().doc.drawing.toleranceTable).toBeUndefined()
+  })
+
+  it('its block pins only while there is a table; removing the table drops the pin too', () => {
+    s().setDocument(demoDocument(), null)
+    const before = s().past.length
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    expect(s().past.length).toBe(before)
+    s().setToleranceTable(ipc())
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    expect(s().doc.drawing.blocks?.tolerance).toEqual({ x: 5, y: 6 })
+    s().setToleranceTable(undefined)
+    expect(s().doc.drawing.toleranceTable).toBeUndefined()
+    expect(s().doc.drawing.blocks).toBeUndefined()
+  })
+
+  it('clearBlockPos returns it to auto-placement and leaves other pins alone', () => {
+    s().setDocument(demoDocument(), null)
+    s().setToleranceTable(ipc())
+    s().setBlockPos({ kind: 'bom', pos: { x: 1, y: 2 } })
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    const n = s().past.length
+    s().clearBlockPos('tolerance')
+    expect(s().doc.drawing.blocks).toEqual({ bom: { x: 1, y: 2 } })
+    expect(s().past.length).toBe(n + 1)
+    s().clearBlockPos('tolerance')
+    expect(s().past.length).toBe(n + 1)
   })
 })

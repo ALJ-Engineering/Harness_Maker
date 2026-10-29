@@ -29,6 +29,7 @@ export const HARNESS_NODE_TYPES: NodeTypes = {
   formboardSheet: SheetNode,
   pinoutTable: BlockNode,
   bomBlock: BlockNode,
+  toleranceBlock: BlockNode,
   pictureBlock: BlockNode
 }
 
