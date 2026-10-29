@@ -2445,20 +2445,32 @@ describe('library-driven actions', () => {
     expect(s().doc.splices.find((x) => x.id === sp)).toMatchObject({ kind: 'weld', part: { partNumber: 'S1' } })
   })
 
-  it('applyCavityTemplate replaces cavities on a wire-free connector, refuses a wired one', () => {
+  it('applyCavityTemplate replaces cavities, keeping the wired cavity at a shared position', () => {
     const id = s().addConnector({ x: 0, y: 0 })
     expect(s().applyCavityTemplate(id, housingPart, resolve)).toBe(true)
     const c = s().doc.connectors.find((x) => x.id === id)!
     expect(c.cavities.map((cv) => cv.position)).toEqual(['A', 'B'])
     expect(c.gender).toBe('female')
-    // wire it, then try again
+    // wire A, then apply a wider template that still has A
     const other = s().addConnector({ x: 50, y: 0 })
     const cavA = c.cavities[0].id
     const cavO = s().doc.connectors.find((x) => x.id === other)!.cavities[0].id
     s().addWire({ type: 'cavity', cavityId: cavA }, { type: 'cavity', cavityId: cavO })
+    const wider: LibraryPart = {
+      ...housingPart, partNumber: 'H2', connector: { cavities: [{ position: 'A' }, { position: 'B' }, { position: 'C' }] }
+    }
+    expect(s().applyCavityTemplate(id, wider, resolve)).toBe(true)
+    const c2 = s().doc.connectors.find((x) => x.id === id)!
+    expect(c2.housing?.partNumber).toBe('H2')
+    expect(c2.cavities.map((cv) => cv.position)).toEqual(['A', 'B', 'C'])
+    expect(c2.cavities[0].id).toBe(cavA)
+    expect(s().doc.wires[0].ends.some((e) => e.type === 'cavity' && e.cavityId === cavA)).toBe(true)
+    // a template without A would orphan the wire: refused, no history entry
     const before = s().past.length
-    expect(s().applyCavityTemplate(id, housingPart, resolve)).toBe(false)
+    const noA: LibraryPart = { ...housingPart, partNumber: 'H3', connector: { cavities: [{ position: '1' }] } }
+    expect(s().applyCavityTemplate(id, noA, resolve)).toBe(false)
     expect(s().past.length).toBe(before)
+    expect(s().doc.connectors.find((x) => x.id === id)!.housing?.partNumber).toBe('H2')
   })
 
   it('refreshPartRefs rewrites stale descriptions, no-op adds no history entry', () => {

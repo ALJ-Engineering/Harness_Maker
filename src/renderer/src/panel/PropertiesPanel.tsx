@@ -810,12 +810,21 @@ function ConnectorEditor({
           value={conn.housing}
           kinds={['connector']}
           library={library}
-          onCommit={(ref) => set((c) => (c.housing = ref))}
+          onCommit={(ref) => {
+            // A newly chosen library housing brings its cavities along (wires
+            // stay on their positions). Otherwise — or when a wired cavity
+            // would be lost — only the part reference changes.
+            const lp = ref && ref.partNumber !== conn.housing?.partNumber ? library.resolve(ref.partNumber) : undefined
+            if (lp?.kind === 'connector' && lp.connector!.cavities.length > 0 && applyCavityTemplate(conn.id, lp, library.resolve))
+              return
+            set((c) => (c.housing = ref))
+          }}
         />
       </Field>
       {(() => {
         const lp = conn.housing ? library.resolve(conn.housing.partNumber) : undefined
-        const wired = conn.cavities.some((cv) => cavityWired(cv.id))
+        const tplPositions = new Set(lp?.kind === 'connector' ? lp.connector!.cavities.map((c) => c.position) : [])
+        const wired = conn.cavities.some((cv) => cavityWired(cv.id) && !tplPositions.has(cv.position))
         // Compare in the same natural-sorted order `sortedCavities` gives the
         // connector's own cavities — otherwise a library record whose cavities
         // happen to be listed "2, 1" reports a spurious difference against an
@@ -833,7 +842,7 @@ function ConnectorEditor({
               disabled={wired}
               title={
                 wired
-                  ? 'Cavities have wires — delete them first'
+                  ? 'Wired cavities are not in the library record — delete their wires first'
                   : `Replace cavities with the ${lp.connector!.cavities.length} in the library record`
               }
               onClick={() => applyCavityTemplate(conn.id, lp, library.resolve)}

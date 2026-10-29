@@ -363,10 +363,11 @@ export interface HarnessState {
   /**
    * Replace an existing connector's housing/gender/cavities with the template
    * from `part` (re-running `instantiateConnector` against its current
-   * designator). Refused — returns false, no history entry — when any cavity
-   * currently on the connector is referenced by a wire end, since swapping the
-   * cavity set out from under live connectivity would orphan those wire ends.
-   * Also refused (false, no-op) for an unknown `connectorId`.
+   * designator). A template cavity at a position the connector already has
+   * keeps that cavity's id, so wires on it stay attached. Refused — returns
+   * false, no history entry — when a wired cavity's position is not in the
+   * template, since dropping it would orphan those wire ends. Also refused
+   * (false, no-op) for an unknown `connectorId`.
    */
   applyCavityTemplate: (connectorId: Id, part: LibraryPart, resolve: (pn: string) => LibraryPart | undefined) => boolean
 
@@ -1311,16 +1312,22 @@ export const useHarnessStore = create<HarnessState>()(
       return id
     },
 
-    // Cavities carry wires (Endpoint.cavityId), so a template is applied only
-    // when NO cavity of this connector is referenced by any wire. Refusal is a
-    // clean no-op: no history entry.
+    // Cavities carry wires (Endpoint.cavityId): each template cavity takes over
+    // the id of the connector's cavity at the same position, and the template
+    // is refused when a wired cavity would not survive. Refusal is a clean
+    // no-op: no history entry.
     applyCavityTemplate: (connectorId, part, resolve) => {
       const doc = get().doc
       const conn = doc.connectors.find((c) => c.id === connectorId)
       if (!conn) return false
-      const cavIds = new Set(conn.cavities.map((c) => c.id))
-      if (doc.wires.some((w) => w.ends.some((e) => e.type === 'cavity' && cavIds.has(e.cavityId)))) return false
       const inst = instantiateConnector(part, conn.designator, resolve, newId)
+      const idAt = new Map<string, Id>()
+      for (const c of conn.cavities) if (!idAt.has(c.position)) idAt.set(c.position, c.id)
+      for (const cav of inst.cavities) cav.id = idAt.get(cav.position) ?? cav.id
+      const cavIds = new Set(conn.cavities.map((c) => c.id))
+      const kept = new Set(inst.cavities.map((c) => c.id))
+      if (doc.wires.some((w) => w.ends.some((e) => e.type === 'cavity' && cavIds.has(e.cavityId) && !kept.has(e.cavityId))))
+        return false
       get().applyEdit((d) => {
         const c = d.connectors.find((x) => x.id === connectorId)
         if (!c) return
