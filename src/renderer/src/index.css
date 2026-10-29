@@ -889,9 +889,12 @@ textarea.pf__input {
   padding: 2px;
   list-style: none;
 }
+/* A description too long for the rest of the row wraps onto its own line under
+   the part number and shows in full: it is what tells near-identical parts apart. */
 .pp__row {
   display: flex;
-  gap: 0.5em;
+  flex-wrap: wrap;
+  column-gap: 0.5em;
   padding: 3px 6px;
   border-radius: 5px;
   cursor: pointer;
@@ -906,9 +909,8 @@ textarea.pf__input {
 }
 .pp__desc {
   color: var(--ink-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .pp__resolved {
   font-size: 11px;
