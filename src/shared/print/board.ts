@@ -272,7 +272,7 @@ interface RunLine {
 
 interface WireObstacles {
   runs: RunLine[]
-  /** Run-label AABBs (mm). Labels print at a constant `MIN_FONT`. */
+  /** Run-label and sleeve-callout AABBs (mm). Both print at a constant `MIN_FONT`. */
   labels: Rect[]
 }
 
@@ -316,6 +316,8 @@ function wireObstacles(layout: FbLayout): WireObstacles {
     const r = segmentLabelRect(seg)
     if (r) labels.push(r)
   }
+  // A sleeve's callout is text beside the run, read with it like a run label.
+  for (const t of layout.treatments) for (const c of t.callouts ?? []) labels.push(c.rect)
   return { runs, labels }
 }
 

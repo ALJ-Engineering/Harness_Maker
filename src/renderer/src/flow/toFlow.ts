@@ -83,6 +83,16 @@ export interface BlockNodeData extends Record<string, unknown> {
   pinned: boolean
 }
 
+export interface TreatmentsNodeData extends Record<string, unknown> {
+  /** Model mm of the treatments' bounding box — the node's position and its SVG viewBox origin. */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** The SAME markup the PDF prints — `renderTreatments` (WYSIWYG). */
+  svg: string
+}
+
 export type FlowNode =
   | (Node<ConnectorNodeData> & { type: 'connector' })
   | (Node<TerminalNodeData> & { type: 'freeTerminal' })
@@ -95,6 +105,7 @@ export type FlowNode =
   | (Node<BlockNodeData> & { type: 'bomBlock' })
   | (Node<BlockNodeData> & { type: 'toleranceBlock' })
   | (Node<BlockNodeData> & { type: 'pictureBlock' })
+  | (Node<TreatmentsNodeData> & { type: 'formboardTreatments' })
 
 /**
  * Project the electrical model + placements into React Flow nodes/edges.

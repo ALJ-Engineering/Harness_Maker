@@ -21,6 +21,9 @@ sleeving and branch breakouts.
   and an optional shield drain). A bundle is loose wires taped together on the board. They can
   share limbs but are counted differently in the BOM.
 - **Sleeving, twists and labels** over any run of limbs, with exposed ends where wires break out.
+  Sleeving (PVC tube, heat shrink, braid, convoluted tube, tape) is drawn with a callout per piece:
+  each segment it covers is its own cut piece. The BOM lists the pieces as count × length
+  ("2 × 160 mm"), by library part or else by type, size and colour.
 - **Design-rule checks** — over 20 rules covering unconnected cavities, wires into empty
   cavities, splice and branch-point degree, unrouted wires, dangling references, gauge and colour
   mismatches across a net, limbs drawn off scale, bodies outside the sheet and stale part numbers.

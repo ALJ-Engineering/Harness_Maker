@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  bomItemForPiece,
+  sleevePieces,
   computeBom,
   computeCutList,
   bomToCsv,
@@ -9,7 +11,7 @@ import {
   bomItemsForParts
 } from './bom'
 import { emptyDocument } from '../model/document'
-import type { HarnessDocument } from '../model/schema'
+import type { HarnessDocument, Sleeving } from '../model/schema'
 
 /** A small harness exercising every part-bearing field. */
 function sampleDoc(): HarnessDocument {
@@ -223,7 +225,7 @@ describe('computeTreatmentLines', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0].kind).toBe('sleeving')
     expect(lines[0].ref).toBe('sl1')
-    expect(lines[0].description).toContain('heatshrink')
+    expect(lines[0].description).toBe('Heat shrink')
     expect(lines[0].lengthMm).toBeCloseTo(50)
     expect(lines[0].part).toBeUndefined()
   })
@@ -240,8 +242,7 @@ describe('computeTreatmentLines', () => {
       }
     ]
     const lines = computeTreatmentLines(d)
-    expect(lines[0].description).toContain('braided')
-    expect(lines[0].description).toContain('6mm')
+    expect(lines[0].description).toBe('Braided sleeve 6mm')
   })
 
   it('includes part number when sleeving has a part ref', () => {
@@ -489,6 +490,65 @@ describe('BOM length-based lines (review fixes)', () => {
     expect(slv.lengthMm).toBeCloseTo(50)
     const tie = bom.find((l) => l.category === 'branch tie')!
     expect(tie).toMatchObject({ partNumber: 'TIE-1', unit: 'ea', quantity: 1 })
+  })
+
+  it('lists sleeve pieces by part (or description) and cut length: equal pieces share a line', () => {
+    const d = docWithSegment()
+    const sleeve = (id: string, color: string, part?: string): Sleeving => ({
+      id,
+      target: { type: 'wire', wireId: 'w1' },
+      span: { segmentIds: ['seg1'] },
+      sleevingType: 'pvc',
+      size: '5mm',
+      color,
+      ...(part ? { part: { partNumber: part, manufacturer: 'ACME' } } : {})
+    })
+    d.sleeving = [sleeve('a', 'BK'), sleeve('b', 'BK'), sleeve('c', 'RD'), sleeve('d', 'BK', 'PVC-5-BK')]
+    const lines = computeBom(d).filter((l) => l.category === 'sleeving')
+    expect(
+      lines.map((l) => [l.pieceRefs, l.partNumber, l.description, l.manufacturer, l.quantity, l.pieceLengthMm, l.lengthMm])
+    ).toEqual([
+      [['SL1', 'SL2'], '', 'PVC tube 5mm BK', undefined, 2, 50, 100],
+      [['SL3'], '', 'PVC tube 5mm RD', undefined, 1, 50, 50],
+      [['SL4'], 'PVC-5-BK', undefined, 'ACME', 1, 50, 50]
+    ])
+    expect(bomItemForPiece(computeBom(d), 'SL2')).toBe(lines[0].item)
+    expect(bomItemForPiece(computeBom(d), 'SL3')).toBe(lines[1].item)
+  })
+
+  it('cuts a sleeve over several segments into one piece per segment, trimmed at the ends', () => {
+    const d = docWithSegment()
+    // A third body 60 mm below X2, so the run X1 → X2 → X3 is 50 mm + 60 mm.
+    d.connectors.push({ id: 'c3', designator: 'X3', cavities: [] })
+    d.placements.push({ refId: 'c3', pos: { x: 30, y: 100 } })
+    d.segments.push({ id: 'seg2', from: { type: 'body', refId: 'c2' }, to: { type: 'body', refId: 'c3' } })
+    d.sleeving = [
+      {
+        id: 'run',
+        target: { type: 'wire', wireId: 'w1' },
+        span: { segmentIds: ['seg1', 'seg2'], startFraction: 0.2, endFraction: 0.5 },
+        sleevingType: 'heatshrink'
+      }
+    ]
+    expect(sleevePieces(d).map((p) => [p.ref, p.segmentId, p.lengthMm])).toEqual([
+      ['SL1.1', 'seg1', 40],
+      ['SL1.2', 'seg2', 30]
+    ])
+    const lines = computeBom(d).filter((l) => l.category === 'sleeving')
+    expect(lines.map((l) => [l.pieceRefs, l.description, l.quantity, l.pieceLengthMm])).toEqual([
+      [['SL1.1'], 'Heat shrink', 1, 40],
+      [['SL1.2'], 'Heat shrink', 1, 30]
+    ])
+  })
+
+  it('a piece whose segment has no length is listed with no length', () => {
+    const d = docWithSegment()
+    d.segments.push({ id: 'ghost', from: { type: 'body', refId: 'c1' }, to: { type: 'body', refId: 'nowhere' } })
+    d.sleeving = [
+      { id: 'b', target: { type: 'wire', wireId: 'w1' }, span: { segmentIds: ['ghost'] }, sleevingType: 'heatshrink' }
+    ]
+    const line = computeBom(d).find((l) => l.category === 'sleeving')!
+    expect(line).toMatchObject({ pieceRefs: ['SL1'], quantity: 1, pieceLengthMm: null, lengthMm: null, partialLength: false })
   })
 })
 

@@ -963,3 +963,23 @@ describe('planBoard — length-tolerance block', () => {
     expect(p.warnings.filter((w) => w.startsWith('table-'))).toEqual([])
   })
 })
+
+describe('planBoard — sleeve callouts', () => {
+  it('a table pinned over a sleeve callout is flagged, as over a run label', () => {
+    const d = demoDocument()
+    d.drawing.sheet = { paper: 'A1', orientation: 'landscape' }
+    const seg = d.segments[0]
+    const wire = d.wireRoutes.find((r) => r.path.includes(seg.id))!.wireId
+    const c1 = d.connectors[0].id
+    const bare = planBoard(d, sheetMm(d.drawing.sheet))
+    d.sleeving = [{ id: 'sl', target: { type: 'wire', wireId: wire }, span: { segmentIds: [seg.id] }, sleevingType: 'heatshrink' }]
+    const rect = computeFormboard(d).treatments[0].callouts![0].rect
+    d.drawing.blocks = { pinout: { [c1]: { x: rect.x, y: rect.y } } }
+    expect(planBoard(d, sheetMm(d.drawing.sheet)).warnings).toContain(`table-over-wire:${c1}`)
+    // Without the sleeve that same spot is only flagged if it was already on a run.
+    const noSleeve = { ...d, sleeving: [] }
+    const pinnedBare = planBoard(noSleeve, sheetMm(d.drawing.sheet)).warnings.includes(`table-over-wire:${c1}`)
+    expect(pinnedBare).toBe(false)
+    expect(bare.warnings).not.toContain(`table-over-wire:${c1}`)
+  })
+})

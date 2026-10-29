@@ -563,6 +563,11 @@ body,
 .panel__section {
   padding: 10px 12px;
 }
+/* A hint inside an editor lines up with its fields; the section already pads. */
+.panel__section > .panel__hint {
+  padding-left: 0;
+  padding-right: 0;
+}
 /* Section headings — the design's uppercase 11px muted label, used both for the
    editor's own kind line and for the subheads inside it. */
 .panel__kind,

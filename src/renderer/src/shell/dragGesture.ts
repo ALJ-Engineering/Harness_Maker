@@ -49,7 +49,8 @@ export function dragOutcome(
         n.type !== 'bomBlock' &&
         n.type !== 'toleranceBlock' &&
         n.type !== 'pictureBlock' &&
-        n.type !== 'formboardSheet'
+        n.type !== 'formboardSheet' &&
+        n.type !== 'formboardTreatments'
     )
     .map((n) => ({ refId: n.id, pos: { x: n.position.x, y: n.position.y } }))
   // Labels: an anchored label is a dot ON the wire — its node position IS the

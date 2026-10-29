@@ -124,6 +124,26 @@ export function spanLengthMm(doc: HarnessDocument, span: Span): number | null {
 }
 
 /**
+ * The mm a span covers on EACH of its segments, in span order: a segment's full
+ * length, less the unused head of the first and tail of the last (one segment:
+ * `endFraction - startFraction` of it). Null for a segment whose length is
+ * unknown, or a piece that comes out negative (inverted fractions). These are
+ * the pieces a sleeve is cut into — one per limb — and they sum to `spanLengthMm`.
+ */
+export function spanPieceLengthsMm(doc: HarnessDocument, span: Span): (number | null)[] {
+  const { segmentIds, startFraction = 0, endFraction = 1 } = span
+  const last = segmentIds.length - 1
+  return segmentIds.map((id, i) => {
+    const len = effectiveSegmentLengthMm(doc, id)
+    if (len == null) return null
+    const from = i === 0 ? startFraction : 0
+    const to = i === last ? endFraction : 1
+    const piece = (to - from) * len
+    return piece < 0 ? null : piece
+  })
+}
+
+/**
  * Total mm of loom run a bundle covers — what a tape/wrap part is consumed over.
  *
  * A bundle is NOT a Span: `segmentIds` is document order, not route order, and a

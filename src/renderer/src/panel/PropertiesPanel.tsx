@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Draft } from 'immer'
 import { useHarnessStore, wiresOnBodies } from '../store'
 import { describeEndpoint } from '../flow/toFlow'
+import { SLEEVING_TYPE_LABEL, describeSleeving, sleevingRef } from '@shared/model/describe'
+import { sleevePieces } from '@shared/export/bom'
 import { screenStroke } from '../flow/screenColors'
 import type { ThemeName } from '../useTheme'
 import { newId } from '@shared/model/ids'
@@ -52,7 +54,7 @@ import {
 } from '@shared/model/treatments'
 import { LABEL_KIND_LABELS } from '@shared/model/formboard'
 import { sortedCavities, natCompare } from '@shared/model/anchors'
-import { colorName } from '@shared/model/colors'
+import { colorName, isKnownColor } from '@shared/model/colors'
 
 export type Selection =
   | { kind: 'none' }
@@ -101,7 +103,10 @@ export function inspectorHeader(
   if (selection.kind === 'sleeving') {
     const sl = doc.sleeving.find((x) => x.id === selection.id)
     return sl
-      ? { title: sl.sleevingType, subtitle: `Sleeving · ${plural(sl.span.segmentIds.length, 'segment')}` }
+      ? {
+          title: SLEEVING_TYPE_LABEL[sl.sleevingType],
+          subtitle: `Sleeving ${sleevingRef(doc, sl.id)} · ${plural(sl.span.segmentIds.length, 'segment')}`
+        }
       : { title: 'Sleeving', subtitle: 'not found' }
   }
   if (selection.kind === 'twist') {
@@ -260,7 +265,7 @@ export function PropertiesPanel({
   } else if (selection.kind === 'sleeving') {
     const sl = doc.sleeving.find((x) => x.id === selection.id)
     body = sl ? (
-      <SleevingEditor sl={sl} doc={doc} edit={applyEdit} />
+      <SleevingEditor sl={sl} doc={doc} edit={applyEdit} library={library} theme={theme} />
     ) : (
       <p className="panel__hint">Item not found.</p>
     )
@@ -1258,24 +1263,25 @@ function CreateActions({
 
 // ──────────────────────────── Sleeving / Twist / Label ───────────────────────
 
-const SLEEVING_TYPES: { value: SleevingType; label: string }[] = [
-  { value: 'braided', label: 'Braided' },
-  { value: 'convoluted', label: 'Convoluted' },
-  { value: 'heatshrink', label: 'Heatshrink' },
-  { value: 'pvc', label: 'PVC' },
-  { value: 'tape', label: 'Tape' }
-]
+const SLEEVING_TYPES: { value: SleevingType; label: string }[] = (
+  Object.keys(SLEEVING_TYPE_LABEL) as SleevingType[]
+).map((value) => ({ value, label: SLEEVING_TYPE_LABEL[value] }))
 
 function SleevingEditor({
   sl,
   doc,
-  edit
+  edit,
+  library,
+  theme
 }: {
   sl: Sleeving
   doc: HarnessDocument
   edit: Edit
+  library: PartsLibrary
+  theme: ThemeName
 }): React.JSX.Element {
   const len = spanLengthMm(doc, sl.span)
+  const pieces = sleevePieces(doc).filter((p) => p.sleeve.id === sl.id)
   let covers = 'wire'
   if (sl.target.type === 'bundle') {
     const bundleId = sl.target.bundleId
@@ -1285,8 +1291,11 @@ function SleevingEditor({
     covers = `cable ${doc.cables.find((c) => c.id === cableId)?.name ?? ''}`
   }
   return (
-    <>
+    <div className="panel__section">
       <div className="panel__kind">Sleeving</div>
+      <Field label="Ref">
+        <span className="pf__ro">{sleevingRef(doc, sl.id)}</span>
+      </Field>
       <Field label="Type">
         <SelectEdit
           value={sl.sleevingType}
@@ -1302,6 +1311,7 @@ function SleevingEditor({
       <Field label="Size">
         <TextEdit
           value={sl.size ?? ''}
+          placeholder="e.g. 5mm"
           onCommit={(v) =>
             edit((d) => {
               const x = d.sleeving.find((s) => s.id === sl.id)
@@ -1310,16 +1320,57 @@ function SleevingEditor({
           }
         />
       </Field>
-      <Field label="Colour">
-        <TextEdit
-          value={sl.color ?? ''}
-          onCommit={(v) =>
+      <Field label="Colour (IEC)">
+        <span className="pf__colorrow">
+          {sl.color && <span className="pf__swatch" style={{ background: screenStroke(sl.color, theme) }} />}
+          <ColorPicker
+            value={sl.color ?? ''}
+            theme={theme}
+            placeholder="none: BK, WH, RD…"
+            onCommit={(code) =>
+              edit((d) => {
+                const x = d.sleeving.find((s) => s.id === sl.id)
+                if (x) x.color = code
+              })
+            }
+          />
+          {sl.color && (
+            <button
+              className="pf__chip-del"
+              title="No colour (drawn as the default blue band)"
+              onClick={() =>
+                edit((d) => {
+                  const x = d.sleeving.find((s) => s.id === sl.id)
+                  if (x) delete x.color
+                })
+              }
+            >
+              ✕
+            </button>
+          )}
+        </span>
+      </Field>
+      {sl.color && !isKnownColor(sl.color) && (
+        <p className="panel__hint">{sl.color} is not an IEC colour, so the drawing shows it grey.</p>
+      )}
+      <Field label="Part">
+        <PartPicker
+          value={sl.part}
+          kinds={['sleeving']}
+          library={library}
+          placeholder="optional…"
+          onCommit={(ref) =>
             edit((d) => {
               const x = d.sleeving.find((s) => s.id === sl.id)
-              if (x) x.color = v || undefined
+              if (!x) return
+              if (ref) x.part = ref
+              else delete x.part
             })
           }
         />
+      </Field>
+      <Field label="In the BOM as">
+        <span className="pf__ro">{sl.part?.partNumber || describeSleeving(sl)}</span>
       </Field>
       <Field label="Covers">
         <span className="pf__ro">{covers}</span>
@@ -1329,8 +1380,19 @@ function SleevingEditor({
           {sl.span.segmentIds.length} seg{len != null ? ` · ${len.toFixed(1)} mm` : ''}
         </span>
       </Field>
-      <p className="panel__hint">To change the covered run, delete and re-create from a new selection.</p>
-    </>
+      {pieces.length > 1 && (
+        <Field label="Pieces">
+          <span className="pf__ro">
+            {pieces.map((p) => `${p.ref} ${p.lengthMm != null ? `${Math.round(p.lengthMm)} mm` : '—'}`).join(' · ')}
+          </span>
+        </Field>
+      )}
+      <p className="panel__hint">
+        Each segment it covers is cut as its own piece, with its own BOM line. Without a part a piece is
+        listed by type, size and colour. To change the covered run, delete and re-create from a new
+        selection.
+      </p>
+    </div>
   )
 }
 
@@ -1345,7 +1407,7 @@ function TwistEditor({
 }): React.JSX.Element {
   const len = spanLengthMm(doc, tw.span)
   return (
-    <>
+    <div className="panel__section">
       <div className="panel__kind">Twist</div>
       <Field label="Wires">
         <span className="pf__ro">{tw.wireIds.length}</span>
@@ -1373,7 +1435,7 @@ function TwistEditor({
           loom limb (add branch points in the formboard). Lay length is recorded for the build.
         </p>
       )}
-    </>
+    </div>
   )
 }
 
@@ -1385,7 +1447,7 @@ function LabelEditor({ lb, edit, doc }: { lb: Label; edit: Edit; doc: HarnessDoc
   const anchor = lb.anchor
   const segLen = anchor ? segmentLengthMm(doc, anchor.segmentId) : null
   return (
-    <>
+    <div className="panel__section">
       <div className="panel__kind">Label</div>
       <Field label="Kind">
         <SelectEdit
@@ -1475,7 +1537,7 @@ function LabelEditor({ lb, edit, doc }: { lb: Label; edit: Edit; doc: HarnessDoc
           </Field>
         </>
       )}
-    </>
+    </div>
   )
 }
 
@@ -1516,7 +1578,12 @@ function TreatmentsList({
     <div className="panel__list">
       <div className="panel__list-title">Treatments &amp; Labels</div>
       {doc.sleeving.map((sl) =>
-        row(sl.id, `${sl.sleevingType} · ${sl.span.segmentIds.length} seg`, () => onSelect('sleeving', sl.id), () => removeSleeving(sl.id))
+        row(
+          sl.id,
+          `${sleevingRef(doc, sl.id)} ${SLEEVING_TYPE_LABEL[sl.sleevingType]} · ${sl.span.segmentIds.length} seg`,
+          () => onSelect('sleeving', sl.id),
+          () => removeSleeving(sl.id)
+        )
       )}
       {doc.twists.map((tw) =>
         row(tw.id, `Twist · ${tw.wireIds.length} wires`, () => onSelect('twist', tw.id), () => removeTwist(tw.id))

@@ -21,12 +21,12 @@ import { colorName } from '../model/colors'
 import {
   computeBom,
   computeCutList,
-  computeTreatmentLines,
+  sleevePieces,
   wireRefIndex,
   type BomLine,
   type CutRow
 } from '../export/bom'
-import { describeEndpoint } from '../model/describe'
+import { describeEndpoint, describeSleeving } from '../model/describe'
 import { sortedCavities, natCompare } from '../model/anchors'
 
 export interface TableSpec {
@@ -96,9 +96,14 @@ const BOM_SHEET_COLS: Column[] = [
   { key: 'quantity', title: 'Quantity', wMm: 22, align: 'end' }
 ]
 
-/** `'2'` for `ea`; `'350 mm'` / `'≥ 350 mm'` (partial) for `m`; `'—'` if length unknown. */
+/**
+ * `'2'` for `ea`; `'350 mm'` / `'≥ 350 mm'` (partial) for `m`; `'—'` if length
+ * unknown; `'2 × 160 mm'` for sleeving, which is cut pieces.
+ */
 export function bomQuantity(l: BomLine): string {
   if (l.unit === 'ea') return String(l.quantity)
+  // Sleeving is cut pieces: how many, of what length.
+  if (l.pieceLengthMm !== undefined) return `${l.quantity} × ${l.pieceLengthMm == null ? '—' : `${l.pieceLengthMm} mm`}`
   if (l.lengthMm == null) return '—'
   const mm = Math.round(l.lengthMm)
   return l.partialLength ? `≥ ${mm} mm` : `${mm} mm`
@@ -135,6 +140,7 @@ function bomUsage(doc: HarnessDocument, line: BomLine, wireIdx: Map<Id, string>)
         .map((t) => t.designator)
         .join(', ')
     case 'sleeving':
+      return line.pieceRefs?.join(', ') ?? ''
     case 'loom tape':
     case 'branch tie':
       return 'See Drawing'
@@ -150,7 +156,9 @@ function bomRows(doc: HarnessDocument): Row[] {
     id: String(l.item),
     type: capitalize(l.category),
     manufacturer: l.manufacturer ?? '',
-    partNumber: l.partNumber,
+    // A sleeve with no part is listed by its description (`computeBom`); the
+    // sheet BOM has no Description column, so the Part Number cell says it.
+    partNumber: l.partNumber || (l.description ?? ''),
     description: l.description ?? '',
     quantity: bomQuantity(l),
     usage: bomUsage(doc, l, wireIdx)
@@ -312,17 +320,16 @@ export function cutlistTable(doc: HarnessDocument): TableSpec {
     }
   })
 
-  const sleevingLines = computeTreatmentLines(doc).filter((l) => l.kind === 'sleeving')
-  doc.sleeving.forEach((sl, i) => {
-    const line = sleevingLines[i]
+  // One row per cut piece: a sleeve over three limbs is three pieces to cut.
+  sleevePieces(doc).forEach((p, i) => {
     rows.push({
       num: String(cutRows.length + i + 1),
       type: 'Sleeving',
-      ref: `SL${i + 1}`,
-      partNumber: line?.part ?? line?.description ?? '',
-      colour: sl.color ?? '',
-      size: sl.size ?? '',
-      length: formatLength(line?.lengthMm ?? null, 'derived'),
+      ref: p.ref,
+      partNumber: p.sleeve.part?.partNumber || describeSleeving(p.sleeve),
+      colour: p.sleeve.color ?? '',
+      size: p.sleeve.size ?? '',
+      length: formatLength(p.lengthMm, 'derived'),
       twistedWith: '',
       notes: ''
     })

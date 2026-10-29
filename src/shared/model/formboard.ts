@@ -1,8 +1,9 @@
 import type { HarnessDocument, Id, Vec2, RouteNode, Span, LabelKind } from './schema'
 import { routeNodeKey, segmentLengthMm, effectiveSegmentLengthMm, segmentLengthBroken } from './geometry'
-import { computeBom, bomItemsForParts, type BomLine } from '../export/bom'
+import { computeBom, bomItemsForParts, bomItemForPiece, sleevePieces, type BomLine } from '../export/bom'
 import { bodyPartNumbers } from './bodyParts'
-import { LABEL_FONT, estTextWidthMm, placementPos } from './anchors'
+import { LABEL_FONT, MIN_FONT, estTextWidthMm, placementPos } from './anchors'
+import { describeSleeving } from './describe'
 
 // Text metrics and the anchor lookup live in anchors.ts — the single source of
 // truth shared with geometry.ts so drawn lines and measured lengths cannot
@@ -67,7 +68,20 @@ export interface FbSegment {
   /** Typed length no longer matches the drawing (see `segmentLengthBroken`). */
   broken: boolean
 }
-export interface FbTreatment { kind: 'sleeving' | 'twist'; points: Vec2[]; layLengthMm?: number }
+export interface FbTreatment {
+  kind: 'sleeving' | 'twist'
+  points: Vec2[]
+  layLengthMm?: number
+  /**
+   * Sleeving only: one callout per cut piece (per segment), e.g.
+   * `SL1.2 PVC tube 5mm BK [7]` (piece ref, what it is, BOM item), each in the
+   * text box it is drawn in — model mm, top-left origin — beside its own
+   * segment. The board planner keeps blocks off those boxes.
+   */
+  callouts?: { text: string; rect: { x: number; y: number; w: number; h: number } }[]
+  /** Sleeving only: its colour (an IEC code such as `BK`, or `#hex`); absent = the default blue band. */
+  color?: string
+}
 export interface FbLabel { id: Id; kind: LabelKind; text: string; pos: Vec2; leader?: Vec2; bead?: Vec2 }
 export interface FbLayout {
   bodies: FbBody[]; segments: FbSegment[]
@@ -104,6 +118,46 @@ export function runLabel(gauge?: string | null, lengthMm?: number | null): strin
   if (hasGauge) return gauge
   if (hasLength) return `${Math.round(lengthMm)} mm`
   return ''
+}
+
+/** Clearance from a sleeve's run to its callout text (mm): half the 4 mm band plus a gap. */
+export const SLEEVE_CALLOUT_GAP = 3.5
+
+/**
+ * Where a sleeve's callout goes: beside the run a quarter of the way along it —
+ * clear of the run's length label at the midpoint — on the side facing down, or
+ * right on a run steeper than 45°. The box is pushed out along that normal until
+ * its nearest edge is `SLEEVE_CALLOUT_GAP` (+ `extra`) from the run, so it never
+ * sits on it. `extra` stacks a second sleeve's callout beyond the first's.
+ */
+export function sleeveCalloutRect(
+  points: Vec2[],
+  text: string,
+  extra = 0
+): { x: number; y: number; w: number; h: number } {
+  const w = estTextWidthMm(text, MIN_FONT)
+  const h = MIN_FONT * 1.4
+  const pieces = points.slice(1).map((b, i) => ({ a: points[i], b, len: Math.hypot(b.x - points[i].x, b.y - points[i].y) }))
+  const total = pieces.reduce((s, q) => s + q.len, 0)
+  let at = total / 4
+  let piece = pieces[pieces.length - 1]
+  for (const q of pieces) {
+    if (at <= q.len) {
+      piece = q
+      break
+    }
+    at -= q.len
+  }
+  const len = piece?.len || 1
+  const d = piece ? { x: (piece.b.x - piece.a.x) / len, y: (piece.b.y - piece.a.y) / len } : { x: 1, y: 0 }
+  const f = piece ? Math.min(1, at / len) : 0
+  const p = piece ? { x: piece.a.x + (piece.b.x - piece.a.x) * f, y: piece.a.y + (piece.b.y - piece.a.y) * f } : points[0]
+  let n = { x: -d.y, y: d.x }
+  const steep = Math.abs(n.x) > Math.abs(n.y)
+  if ((steep && n.x < 0) || (!steep && n.y < 0)) n = { x: -n.x, y: -n.y }
+  // Distance from the box centre to its edge along n (the box's support in that direction).
+  const reach = SLEEVE_CALLOUT_GAP + extra + (Math.abs(n.x) * w) / 2 + (Math.abs(n.y) * h) / 2
+  return { x: p.x + n.x * reach - w / 2, y: p.y + n.y * reach - h / 2, w, h }
 }
 
 export function computeFormboard(
@@ -204,7 +258,29 @@ export function computeFormboard(
     return pts
   }
   const treatments: FbTreatment[] = []
-  for (const s of doc.sleeving) { const p = spanPoints(s.span); if (p) treatments.push({ kind: 'sleeving', points: p }) }
+  const callouts: { x: number; y: number; w: number; h: number }[] = []
+  const overlaps = (a: (typeof callouts)[number], b: (typeof callouts)[number]): boolean =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  const pieces = sleevePieces(doc)
+  for (const s of doc.sleeving) {
+    const p = spanPoints(s.span)
+    if (!p) continue
+    // `spanPoints` gives one point per segment end, so piece j runs p[j] → p[j + 1].
+    const own = pieces.filter((q) => q.sleeve.id === s.id)
+    const pieceCallouts = own.map((q) => {
+      const item = bomItemForPiece(bom, q.ref)
+      const text = `${q.ref} ${describeSleeving(s)}${item !== undefined ? ` [${item}]` : ''}`
+      const run = p.slice(q.index, q.index + 2)
+      // Two sleeves on one run would print their callouts on top of each other: stack them outward.
+      let rect = sleeveCalloutRect(run, text)
+      for (let k = 1; k <= 8 && callouts.some((c) => overlaps(c, rect)); k++) {
+        rect = sleeveCalloutRect(run, text, k * (MIN_FONT * 1.4 + 0.5))
+      }
+      callouts.push(rect)
+      return { text, rect }
+    })
+    treatments.push({ kind: 'sleeving', points: p, callouts: pieceCallouts, ...(s.color ? { color: s.color } : {}) })
+  }
   for (const t of doc.twists) { const p = spanPoints(t.span); if (p) treatments.push({ kind: 'twist', points: p, layLengthMm: t.layLengthMm }) }
 
   // labels — an anchored label rides a segment: a bead ON the wire (`bead`, at
