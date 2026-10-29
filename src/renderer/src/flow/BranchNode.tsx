@@ -7,12 +7,14 @@ export function BranchNode({ id, data }: NodeProps<Node<BranchNodeData>>): React
   // handles are tiny, transparent anchor points centred by LAYOUT (not transform):
   // React Flow measures a handle's connection point from its layout box, and CSS
   // `transform` does NOT move that measured point — so a transform-centred handle
-  // still anchored edges off-centre. A 1×1 box at left/top 50% (right/bottom auto to
-  // cancel Position.Right's right:0) sits at the node centre by layout. Stacked
-  // source+target share the id so segment edges connect from either direction.
+  // still anchored edges off-centre. The box is also ZERO-sized: for Position.Right
+  // React Flow connects at `x + width`, so even a 1×1 box at left/top 50% (right/
+  // bottom auto to cancel Position.Right's right:0) put every segment end 0.5 mm
+  // right of the dot — off the model line the PDF and the sleeve bands are drawn on.
+  // Stacked source+target share the id so segment edges connect from either direction.
   const anchor = {
-    width: 1,
-    height: 1,
+    width: 0,
+    height: 0,
     minWidth: 0,
     minHeight: 0,
     background: 'transparent',
