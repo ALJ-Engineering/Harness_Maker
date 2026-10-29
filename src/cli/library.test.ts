@@ -31,8 +31,26 @@ const pdf = (body = '%PDF-1.4\n%%EOF\n', name = 'ds.pdf'): string => {
   writeFileSync(f, body)
   return f
 }
-const stub = (body: string, status = 200): FetchLike => async () => new Response(body, { status })
-const files = (): string[] => ['parts', 'datasheets'].flatMap((d) => readdirSync(join(lib, d)).map((f) => `${d}/${f}`))
+const stub = (body: string | Uint8Array<ArrayBuffer>, status = 200): FetchLike => async () => new Response(body, { status })
+const files = (): string[] =>
+  ['parts', 'datasheets', 'images'].flatMap((d) => readdirSync(join(lib, d)).map((f) => `${d}/${f}`))
+/** The smallest file `imageSize` reads as a PNG / a JPEG: just the header, `w` × `h` px. */
+const pngBytes = (w = 4, h = 3): Uint8Array<ArrayBuffer> => {
+  const b = Buffer.alloc(24)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b)
+  b.writeUInt32BE(13, 8)
+  b.write('IHDR', 12, 'latin1')
+  b.writeUInt32BE(w, 16)
+  b.writeUInt32BE(h, 20)
+  return new Uint8Array(b)
+}
+const jpegBytes = (): Uint8Array<ArrayBuffer> =>
+  new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x07, 0x00, 0x05, ...new Array(12).fill(0)])
+const picture = (bytes: Uint8Array | string, name: string): string => {
+  const f = join(tmp, name)
+  writeFileSync(f, bytes)
+  return f
+}
 
 describe('libraryPut', () => {
   it('puts a complete connector with a local PDF; show reports complete', async () => {
@@ -104,6 +122,53 @@ describe('libraryPut', () => {
     const r = await libraryPut(lib, f)
     expect(r.ok).toBe(false)
     expect(existsSync(join(lib, 'parts', 'junk.json'))).toBe(false)
+  })
+})
+
+describe('libraryPut with a picture', () => {
+  it('copies a local PNG in next to the record; show reports it', async () => {
+    expect(await libraryShow(lib, 'HSG-1')).toBeNull()
+    const r = await libraryPut(lib, record(conn()), { datasheet: pdf(), picture: picture(pngBytes(), 'photo.png') })
+    expect(r).toMatchObject({ ok: true, partNumber: 'HSG-1', created: true })
+    expect(files()).toContain('images/HSG-1.png')
+    expect(await libraryShow(lib, 'HSG-1')).toMatchObject({ hasPicture: true, incomplete: [] })
+  })
+
+  it('a part without one shows hasPicture false: a picture is never required', async () => {
+    expect((await libraryPut(lib, record(conn()), { datasheet: pdf() })).ok).toBe(true)
+    expect(await libraryShow(lib, 'HSG-1')).toMatchObject({ hasPicture: false, incomplete: [] })
+  })
+
+  it('downloads a URL picture; a JPEG replaces an earlier PNG instead of sitting beside it', async () => {
+    expect((await libraryPut(lib, record(conn()), { datasheet: pdf(), picture: picture(pngBytes(), 'photo.png') })).ok).toBe(true)
+    const r = await libraryPut(lib, record(conn()), { picture: 'https://x/photo.jpg', fetchImpl: stub(jpegBytes()) })
+    expect(r).toMatchObject({ ok: true, created: false })
+    expect(files().filter((f) => f.startsWith('images/'))).toEqual(['images/HSG-1.jpg'])
+  })
+
+  it('refuses a picture that is not a PNG or JPEG, and writes nothing', async () => {
+    const webp = picture('RIFF....WEBPVP8 ', 'photo.webp')
+    const r = await libraryPut(lib, record(conn()), { datasheet: pdf(), picture: webp })
+    expect(r.ok).toBe(false)
+    expect(r.problems).toEqual(['HSG-1: picture: Not a PNG or JPEG image'])
+    expect(files()).toEqual([])
+  })
+
+  it('a failed download names the picture and writes nothing', async () => {
+    const r = await libraryPut(lib, record(conn()), { datasheet: pdf(), picture: 'https://x/p.png', fetchImpl: stub('', 404) })
+    expect(r.problems).toEqual(['HSG-1: picture download failed: HTTP 404 for https://x/p.png'])
+    expect(files()).toEqual([])
+  })
+
+  it('a failed update puts the previous picture back, byte for byte', async () => {
+    const old = jpegBytes()
+    expect((await libraryPut(lib, record(conn()), { datasheet: pdf(), picture: picture(old, 'old.jpg') })).ok).toBe(true)
+    const bad = conn({ description: 'changed' })
+    delete bad.manufacturer
+    const r = await libraryPut(lib, record(bad, 'bad.json'), { picture: picture(pngBytes(), 'new.png') })
+    expect(r.ok).toBe(false)
+    expect(files().filter((f) => f.startsWith('images/'))).toEqual(['images/HSG-1.jpg'])
+    expect(new Uint8Array(readFileSync(join(lib, 'images', 'HSG-1.jpg')))).toEqual(old)
   })
 })
 

@@ -1,5 +1,8 @@
-import { app, Menu, BrowserWindow, type MenuItemConstructorOptions } from 'electron'
+import { app, clipboard, Menu, BrowserWindow, type MenuItemConstructorOptions } from 'electron'
 import { chooseLibraryDir } from './partsLibraryIpc'
+import { recentLabel } from './recentFiles'
+import { clearRecentFiles, openRecent, recentFiles } from './recentFilesIpc'
+import { claudeCodeCommand, claudeDesktopConfig, mcpStatus, mcpUrl, setMcpEnabled, type McpStatus } from './mcp'
 
 export type MenuAction =
   | 'new'
@@ -18,6 +21,49 @@ function send(action: MenuAction): void {
   BrowserWindow.getFocusedWindow()?.webContents.send('menu:action', action)
 }
 
+/** One line of state for the Agent access submenu. */
+function statusLine(st: McpStatus): string {
+  if (st.state === 'listening') return `Listening on ${mcpUrl(st.port)}`
+  if (st.state === 'failed') return `Not running: ${st.message}`
+  return 'Off: no agent can reach the open document'
+}
+
+/**
+ * Settings ▸ Agent access (MCP): let AI agents (Claude Code, Claude Desktop) read
+ * and edit the open document through the in-app MCP server. Rebuilt whenever
+ * the server's state changes (`registerMcp(buildAppMenu)`).
+ */
+function agentAccessMenu(st: McpStatus): MenuItemConstructorOptions {
+  const port = st.state === 'off' ? null : st.port
+  return {
+    label: 'Agent access (MCP)',
+    submenu: [
+      {
+        label: 'Let AI agents edit the open document',
+        type: 'checkbox',
+        checked: st.state !== 'off',
+        click: (item) => void setMcpEnabled(item.checked)
+      },
+      { label: statusLine(st), enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Copy Claude Code command',
+        enabled: st.state === 'listening',
+        click: () => {
+          if (port) clipboard.writeText(claudeCodeCommand(port))
+        }
+      },
+      {
+        label: 'Copy Claude Desktop config',
+        enabled: st.state === 'listening',
+        click: () => {
+          if (port) clipboard.writeText(claudeDesktopConfig(port))
+        }
+      }
+    ]
+  }
+}
+
 /**
  * Build the application menu. File actions are dispatched to the renderer (it
  * owns document state) and use CmdOrCtrl accelerators so the same shortcuts
@@ -29,11 +75,30 @@ export function buildAppMenu(): void {
   // Windows and Linux. macOS menus have no access keys.
   const top = (label: string): string => (isMac ? label : `&${label}`)
 
+  // Rebuilt by `recentFilesIpc` whenever the list changes.
+  const recent = recentFiles()
+  const openRecentMenu: MenuItemConstructorOptions = {
+    label: 'Open Recent',
+    submenu: recent.length
+      ? [
+          ...recent.map(
+            (path, i): MenuItemConstructorOptions => ({
+              label: recentLabel(path, i, process.platform),
+              click: () => openRecent(path)
+            })
+          ),
+          { type: 'separator' },
+          { label: 'Clear Recently Opened', click: clearRecentFiles }
+        ]
+      : [{ label: 'No recent files', enabled: false }]
+  }
+
   const fileMenu: MenuItemConstructorOptions = {
     label: top('File'),
     submenu: [
       { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
       { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
+      openRecentMenu,
       { type: 'separator' },
       { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
       { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('saveAs') },
@@ -81,7 +146,9 @@ export function buildAppMenu(): void {
         click: () => {
           void chooseLibraryDir(BrowserWindow.getFocusedWindow() ?? undefined)
         }
-      }
+      },
+      { type: 'separator' },
+      agentAccessMenu(mcpStatus())
     ]
   }
 

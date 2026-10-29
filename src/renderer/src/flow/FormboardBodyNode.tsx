@@ -21,11 +21,11 @@ export function FormboardBodyNode({
   data,
   selected
 }: NodeProps<Node<FormboardBodyData>>): React.JSX.Element {
-  // Tiny transparent anchors centred by LAYOUT, not transform: React Flow
-  // measures a handle's connection point from its layout box (see BranchNode).
+  // Zero-size transparent anchors on the node centre (see BranchNode for why
+  // zero: a sized box puts the connection point half its width off centre).
   const anchor = {
-    width: 1,
-    height: 1,
+    width: 0,
+    height: 0,
     minWidth: 0,
     minHeight: 0,
     background: 'transparent',

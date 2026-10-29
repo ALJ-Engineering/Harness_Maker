@@ -1,6 +1,6 @@
-import type { HarnessDocument, PartRef, LabelKind, Id } from '../model/schema'
-import { describeEndpoint } from '../model/describe'
-import { wireLength, spanLengthMm, bundleLengthMm, type LengthSource } from '../model/geometry'
+import type { HarnessDocument, PartRef, LabelKind, Id, Sleeving } from '../model/schema'
+import { describeEndpoint, describeSleeving } from '../model/describe'
+import { wireLength, spanLengthMm, spanPieceLengthsMm, bundleLengthMm, type LengthSource } from '../model/geometry'
 import { sortedCavities } from '../model/anchors'
 
 /** A part category in the BOM, used to group otherwise-equal part numbers. */
@@ -30,6 +30,41 @@ export interface BomLine {
   unit: 'ea' | 'm' // procurement unit: discrete vs sold-by-length
   lengthMm: number | null // 'ea' → null; 'm' → Σ of KNOWN contributors in mm, or null if NONE known
   partialLength: boolean // true iff lengthMm is non-null AND ≥1 contributor was unknown (Σ undercounts)
+  /**
+   * Sleeving only. A sleeving line is pieces of one part (or one description)
+   * cut to ONE length: `quantity` pieces of `pieceLengthMm` (whole mm; null =
+   * unknown) each, `lengthMm` their total — shown as "2 × 160 mm". `pieceRefs`
+   * names the pieces (`SL1.2`, …; see `sleevePieces`).
+   */
+  pieceLengthMm?: number | null
+  pieceRefs?: string[]
+}
+
+/**
+ * One cut piece of a sleeve. A sleeve is cut and fitted one piece per limb, so a
+ * sleeve over three segments is three pieces: `SL1.1`, `SL1.2`, `SL1.3` (just
+ * `SL1` when it covers one), each with its own length (`spanPieceLengthsMm`).
+ */
+export interface SleevePiece {
+  sleeve: Sleeving
+  ref: string
+  segmentId: Id
+  /** Position in the sleeve's span, 0-based. */
+  index: number
+  lengthMm: number | null
+}
+
+/** Every sleeve's pieces, in document order and then span order. */
+export function sleevePieces(doc: HarnessDocument): SleevePiece[] {
+  const out: SleevePiece[] = []
+  doc.sleeving.forEach((sl, i) => {
+    const lengths = spanPieceLengthsMm(doc, sl.span)
+    const several = sl.span.segmentIds.length > 1
+    sl.span.segmentIds.forEach((segmentId, j) =>
+      out.push({ sleeve: sl, ref: several ? `SL${i + 1}.${j + 1}` : `SL${i + 1}`, segmentId, index: j, lengthMm: lengths[j] })
+    )
+  })
+  return out
 }
 
 /** One cut-list row: a single wire (or whole cable) and its build data. */
@@ -60,6 +95,12 @@ export interface CutRow {
  * `partialLength` when some contributor's length is unknown (the shown Σ is an
  * undercount). Lines are keyed by `category|partNumber`; insertion order is
  * preserved; entities without a part reference contribute nothing.
+ *
+ * Sleeving is the exception both ways: it is listed by CUT PIECE
+ * (`sleevePieces`), one line per part and cut length — pieces of the same part
+ * cut to the same whole mm share a line, "2 × 160 mm", since a builder cuts
+ * pieces, not metres — and a piece with no part is listed all the same, by
+ * `describeSleeving` ("PVC tube 5mm BK") with an empty `partNumber`.
  */
 export function computeBom(doc: HarnessDocument): BomLine[] {
   const byKey = new Map<string, BomLine>()
@@ -113,8 +154,34 @@ export function computeBom(doc: HarnessDocument): BomLine[] {
   }
   // A cable is one purchased assembly; its jacket cut length is the buyable length.
   for (const cab of doc.cables) add('cable', cab.part, { mm: cab.specifiedLengthMm ?? null })
-  // Sleeving is length-based; branch ties are discrete consumables.
-  for (const sl of doc.sleeving) add('sleeving', sl.part, { mm: spanLengthMm(doc, sl.span) })
+  // Sleeving: cut pieces, one line per part (or description) and cut length.
+  for (const p of sleevePieces(doc)) {
+    const part = p.sleeve.part?.partNumber ? p.sleeve.part : undefined
+    const description = part ? part.description : describeSleeving(p.sleeve)
+    const cut = p.lengthMm == null ? null : Math.round(p.lengthMm)
+    const key = `sleeving|${part ? part.partNumber : `desc:${description}`}|${cut ?? '?'}`
+    let line = byKey.get(key)
+    if (!line) {
+      line = {
+        item: 0,
+        category: 'sleeving',
+        partNumber: part?.partNumber ?? '',
+        description,
+        manufacturer: part?.manufacturer,
+        quantity: 0,
+        unit: 'm',
+        lengthMm: null,
+        partialLength: false,
+        pieceLengthMm: cut,
+        pieceRefs: []
+      }
+      byKey.set(key, line)
+    }
+    line.quantity += 1
+    line.pieceRefs!.push(p.ref)
+    if (cut != null) line.lengthMm = (line.lengthMm ?? 0) + cut
+  }
+  // Branch ties are discrete consumables.
   // Loom tape over a bundle: consumed along the bundle's whole run.
   for (const bn of doc.bundles) add('loom tape', bn.part, { mm: bundleLengthMm(doc, bn) })
   for (const bp of doc.branchPoints) add('branch tie', bp.tie)
@@ -135,6 +202,11 @@ export function bomItemsForParts(lines: BomLine[], partNumbers: readonly string[
   const items = new Set<number>()
   for (const l of lines) if (wanted.has(l.partNumber)) items.add(l.item)
   return [...items].sort((a, b) => a - b)
+}
+
+/** The BOM item of sleeve piece `ref` (`SL1.2`) — the `[7]` in its drawing callout. */
+export function bomItemForPiece(lines: BomLine[], ref: string): number | undefined {
+  return lines.find((l) => l.pieceRefs?.includes(ref))?.item
 }
 
 /** Build a map from (non-core) wire id → cut-list reference string (W1, W2, …).
@@ -215,7 +287,7 @@ export function computeTreatmentLines(doc: HarnessDocument): TreatmentLine[] {
   const lines: TreatmentLine[] = []
 
   for (const sl of doc.sleeving) {
-    const description = sl.size ? `${sl.sleevingType} ${sl.size}` : sl.sleevingType
+    const description = describeSleeving(sl)
     lines.push({
       kind: 'sleeving',
       ref: sl.id,

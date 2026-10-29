@@ -92,7 +92,7 @@ describe('reportToHtml — Treatments table', () => {
     ]
     const html = reportToHtml(d)
     expect(html).toMatch(/Treatments/i)
-    expect(html).toContain('heatshrink')
+    expect(html).toContain('Heat shrink')
     expect(html).toContain('50')
   })
 

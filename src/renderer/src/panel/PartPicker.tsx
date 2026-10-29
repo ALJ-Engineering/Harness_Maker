@@ -6,12 +6,20 @@ import type { PartsLibrary } from '../usePartsLibrary'
 
 const MAX_ROWS = 12
 
+/** The row highlighted when the list opens on `draft`: none for a blank draft,
+ *  so Enter on a cleared field clears the part instead of picking the first row. */
+export function firstHighlight(draft: string): number {
+  return draft.trim() ? 0 : -1
+}
+
 /**
  * A `PartRef` field: type to search the library (restricted to `kinds`), pick a
  * row to commit the full ref, or press Enter on free text to commit a bare
  * `{ partNumber }` exactly as the old TextEdit did — a part the library does
- * not know must stay enterable. Commits on blur like TextEdit so one edit is
- * one undo step. Shows the resolved library description under the field.
+ * not know must stay enterable. Clearing the field and pressing Enter (or
+ * leaving it) clears the part; the arrow keys still pick from the list.
+ * Commits on blur like TextEdit so one edit is one undo step. Shows the
+ * resolved library description under the field.
  */
 export function PartPicker({
   value,
@@ -64,9 +72,12 @@ export function PartPicker({
         onChange={(e) => {
           setDraft(e.target.value)
           setOpen(!!library.dir)
-          setHi(0)
+          setHi(firstHighlight(e.target.value))
         }}
-        onFocus={() => setOpen(!!library.dir)}
+        onFocus={() => {
+          setOpen(!!library.dir)
+          setHi(firstHighlight(draft))
+        }}
         onBlur={() => {
           setOpen(false)
           commitText()

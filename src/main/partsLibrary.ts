@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'fs/promises'
 import { basename, extname, join, resolve, sep } from 'path'
 import { LIBRARY_SUBDIRS } from './settings'
-import { readHeader } from './partsImages'
+import { importImage, readHeader, resolveForPart } from './partsImages'
 import { renameWithRetry } from './renameRetry'
 import { sanitisePartNumber } from '../shared/parts/images'
 import { parseLibraryPart, serializeLibraryPart, type LibraryPart } from '../shared/parts/librarySchema'
@@ -166,6 +166,23 @@ export async function importDatasheet(
 
 export async function removeDatasheet(dir: string, partNumber: string): Promise<boolean> {
   const p = await datasheetPath(dir, partNumber)
+  if (!p) return false
+  await rm(p)
+  return true
+}
+
+/** This part's picture (`images/<stem>.png|.jpg|.jpeg`), or null when it has none. */
+export async function picturePath(dir: string, partNumber: string): Promise<string | null> {
+  return resolveForPart(join(dir, LIBRARY_SUBDIRS.images), partNumber)
+}
+
+/** Copy `srcPath` in as this part's picture, replacing any it had. `importImage` checks it: a PNG or JPEG, at most 5 MB. */
+export async function importPicture(dir: string, partNumber: string, srcPath: string): Promise<void> {
+  await importImage(await writableSubdir(dir, LIBRARY_SUBDIRS.images), partNumber, srcPath)
+}
+
+export async function removePicture(dir: string, partNumber: string): Promise<boolean> {
+  const p = await picturePath(dir, partNumber)
   if (!p) return false
   await rm(p)
   return true

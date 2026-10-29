@@ -8,8 +8,68 @@ import { pictureBlockSize, renderPictureBlock } from '@shared/print/picture'
 import { sheetMm } from '@shared/print/sheet'
 import { renderTable, TABLE_STYLE_SHEET } from '@shared/print/tables'
 import { renderTitleBlock, type PrintBranding } from '@shared/print/titleBlock'
+import { renderTreatments } from '@shared/export/svg'
 import type { FlowNode } from './toFlow'
 import type { FormboardSegmentEdgeData } from './FormboardSegmentEdge'
+
+/**
+ * A board block's node id. The prefixes / reserved ids are never entity ids, so
+ * a block drag cannot be mistaken for a placement move (`dragGesture.ts`).
+ */
+const BLOCK_NODE_ID: Record<PlacedBlock['kind'], (id: string) => string> = {
+  pinout: (id) => `tbl:${id}`,
+  picture: (id) => `pic:${id}`,
+  bom: () => '__bom',
+  tolerance: () => '__tolerance'
+}
+const BLOCK_NODE_TYPE = {
+  pinout: 'pinoutTable',
+  picture: 'pictureBlock',
+  bom: 'bomBlock',
+  tolerance: 'toleranceBlock'
+} as const satisfies Record<PlacedBlock['kind'], FlowNode['type']>
+
+/** Half the 4 mm treatment band (plus its round caps): how far a band reaches past its run. */
+const BAND_REACH = 2
+
+/**
+ * The one `__treatments` node: every sleeve and twist drawn with the PDF's own
+ * `renderTreatments` markup, sized to their bounding box (bands and sleeve
+ * callouts). Null when the document has none. Above the sheet (zIndex -10) and
+ * UNDER the segments and dots — a sleeve is a band the wire runs through, so the
+ * wire line stays on top, the order print draws them in — and inert, so a
+ * click reaches the segment.
+ */
+function treatmentsNode(layout: FbLayout): FlowNode | null {
+  if (!layout.treatments.length) return null
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const t of layout.treatments) {
+    for (const p of t.points) {
+      xs.push(p.x - BAND_REACH, p.x + BAND_REACH)
+      ys.push(p.y - BAND_REACH, p.y + BAND_REACH)
+    }
+    for (const { rect: r } of t.callouts ?? []) {
+      xs.push(r.x, r.x + r.w)
+      ys.push(r.y, r.y + r.h)
+    }
+  }
+  if (!xs.length) return null
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return {
+    id: '__treatments',
+    type: 'formboardTreatments',
+    position: { x, y },
+    draggable: false,
+    selectable: false,
+    deletable: false,
+    focusable: false,
+    zIndex: -5,
+    style: { pointerEvents: 'none' },
+    data: { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y, svg: renderTreatments(layout.treatments) }
+  }
+}
 
 /** React Flow source/target + handle for a route-node. Null if it has no node. */
 function nodeRef(layout: FbLayout, node: RouteNode): { id: string; handle: string } | null {
@@ -25,8 +85,10 @@ function nodeRef(layout: FbLayout, node: RouteNode): { id: string; handle: strin
  * - branchPoint → `branch` node (unchanged)
  * - FbSegment → `formboardSegment` edge coloured by routed wire(s)
  * - the BOARD PLAN → one `formboardSheet` node (the drawing sheet + title block) plus a
- *   `pinoutTable` / `bomBlock` / `pictureBlock` node per placed block, so the
+ *   `pinoutTable` / `bomBlock` / `toleranceBlock` / `pictureBlock` node per placed block, so the
  *   canvas shows exactly what the 1:1 PDF prints (spec §5).
+ * - sleeves and twists → one inert `formboardTreatments` node (`__treatments`)
+ *   drawing the PDF's own band + callout markup
  *
  * `branding` only reaches the title block: the logo read from the parts
  * library (`<library>/branding/logo.*`). Default empty ⇒ an empty logo cell.
@@ -77,14 +139,14 @@ export function documentToFormboard(
     }
   })
 
-  // Blocks render the SAME markup as print — `renderTable` for the two table
+  // Blocks render the SAME markup as print — `renderTable` for the table
   // kinds, `renderPictureBlock` for a picture. The pinout's inner x-offset is
   // `TABLE_PAD / 2` because `planBoard` sizes a pinout rect as
-  // `tableWidth + TABLE_PAD`, i.e. the table is centred in its rect; the BOM
-  // and picture rects are the drawn width exactly, so they draw at 0.
+  // `tableWidth + TABLE_PAD`, i.e. the table is centred in its rect; the BOM,
+  // tolerance and picture rects are the drawn width exactly, so they draw at 0.
   const blockNode = (b: PlacedBlock): FlowNode => ({
-    id: b.kind === 'bom' ? '__bom' : b.kind === 'picture' ? `pic:${b.id}` : `tbl:${b.id}`,
-    type: b.kind === 'bom' ? 'bomBlock' : b.kind === 'picture' ? 'pictureBlock' : 'pinoutTable',
+    id: BLOCK_NODE_ID[b.kind](b.id),
+    type: BLOCK_NODE_TYPE[b.kind],
     position: { x: b.rect.x, y: b.rect.y },
     deletable: false,
     zIndex: 5,
@@ -110,6 +172,9 @@ export function documentToFormboard(
   for (const t of plan.tables) nodes.push(blockNode(t))
   for (const p of plan.pictures) nodes.push(blockNode(p))
   nodes.push(blockNode(plan.bom))
+  if (plan.tolerance) nodes.push(blockNode(plan.tolerance))
+  const treatments = treatmentsNode(layout)
+  if (treatments) nodes.push(treatments)
 
   // One dot per body — connector, free terminal and splice all render the same
   // glyph. origin [0.5,0.5] centres the dot AND its handle on `body.pos` (the

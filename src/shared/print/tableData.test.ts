@@ -1,11 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { demoDocument, emptyDocument } from '../model/document'
-import { bomPageTable, bomSheetTable, wiringTable, cutlistTable, connectorPinouts, bomQuantity } from './tableData'
+import {
+  bomPageTable,
+  bomSheetTable,
+  wiringTable,
+  cutlistTable,
+  connectorPinouts,
+  bomQuantity,
+  toleranceSheetTable
+} from './tableData'
 import { computeCutList, cutListToCsv } from '../export/bom'
 import type { Wire } from '../model/schema'
+import { IPC_620_LENGTH_TOLERANCE } from '../model/schema'
 import { colorName } from '../model/colors'
 import { estimateTextWidthMm, fitText } from './text'
-import { TABLE_STYLE_SHEET } from './tables'
+import { TABLE_STYLE_SHEET, tableWidth } from './tables'
 
 describe('tableData on the demo harness', () => {
   const doc = demoDocument()
@@ -333,5 +342,79 @@ describe('wiringTable: cable cores and drains', () => {
     ;[c1, c2] = wiringTable(d).rows
     expect(c1.twistedWith).toBe('CAN-1.2')
     expect(c2.twistedWith).toBe('CAN-1.1')
+  })
+})
+
+describe('toleranceSheetTable', () => {
+  it('lists the IPC/WHMA-A-620 bands shortest first, each with the range it covers', () => {
+    const spec = toleranceSheetTable({ bands: IPC_620_LENGTH_TOLERANCE })
+    expect(spec.cols.map((c) => c.key)).toEqual(['length', 'tolerance'])
+    expect(spec.rows).toEqual([
+      { length: '≤ 300 mm', tolerance: '+25 / −0 mm' },
+      { length: '> 300 to 1500 mm', tolerance: '+50 / −0 mm' },
+      { length: '> 1500 to 3000 mm', tolerance: '+100 / −0 mm' },
+      { length: '> 3000 to 7500 mm', tolerance: '+150 / −0 mm' },
+      { length: '> 7500 mm', tolerance: '+5 / −0 %' }
+    ])
+  })
+
+  it('sorts the bands, writes ± for an even tolerance, and names a lone open band "All lengths"', () => {
+    const spec = toleranceSheetTable({
+      bands: [
+        { plus: 2.5, minus: 2.5, unit: '%' },
+        { upToMm: 500, plus: 10, minus: 10, unit: 'mm' }
+      ]
+    })
+    expect(spec.rows).toEqual([
+      { length: '≤ 500 mm', tolerance: '± 10 mm' },
+      { length: '> 500 mm', tolerance: '± 2.5 %' }
+    ])
+    expect(toleranceSheetTable({ bands: [{ plus: 1, minus: 0, unit: '%' }] }).rows[0].length).toBe('All lengths')
+  })
+
+  it('widens the Tolerance column until the banner title fits', () => {
+    const bands = [{ upToMm: 500, plus: 10, minus: 10, unit: 'mm' as const }]
+    const title = 'Length tolerance, all wires and cables, unless the drawing says otherwise'
+    const narrow = tableWidth(toleranceSheetTable({ title: 'T', bands }).cols)
+    const wide = toleranceSheetTable({ title, bands }).cols
+    expect(tableWidth(wide)).toBeGreaterThan(narrow)
+    expect(tableWidth(wide)).toBeGreaterThan(estimateTextWidthMm(title, TABLE_STYLE_SHEET.fontMm * 1.15))
+    expect(wide[0].wMm).toBe(toleranceSheetTable({ title: 'T', bands }).cols[0].wMm)
+  })
+})
+
+describe('sleeving in the BOM and cut list', () => {
+  /** The demo with two PVC 5mm BK sleeves on its first wire's run and one with a library part. */
+  function sleeved(): ReturnType<typeof demoDocument> {
+    const d = demoDocument()
+    const span = { segmentIds: [d.segments[0].id] }
+    const target = { type: 'wire' as const, wireId: d.wires[0].id }
+    d.sleeving = [
+      { id: 'a', target, span, sleevingType: 'pvc', size: '5mm', color: 'BK' },
+      { id: 'b', target, span, sleevingType: 'heatshrink', part: { partNumber: 'HS-6', manufacturer: 'TE' } },
+      { id: 'c', target, span, sleevingType: 'pvc', size: '5mm', color: 'BK' }
+    ]
+    return d
+  }
+
+  it('the sheet BOM lists pieces as count × length, naming one with no part by its description; Usage names them', () => {
+    const d = sleeved()
+    const sheet = bomSheetTable(d).rows.filter((r) => r.type === 'Sleeving')
+    expect(sheet.map((r) => [r.partNumber, r.manufacturer, r.quantity])).toEqual([
+      ['PVC tube 5mm BK', '', '2 × 320 mm'],
+      ['HS-6', 'TE', '1 × 320 mm']
+    ])
+    const page = bomPageTable(d).rows.filter((r) => r.type === 'Sleeving')
+    expect(page.map((r) => r.usage)).toEqual(['SL1, SL3', 'SL2'])
+    expect(page[0].description).toBe('PVC tube 5mm BK')
+  })
+
+  it('the cut list describes a sleeve the same way', () => {
+    const rows = cutlistTable(sleeved()).rows.filter((r) => r.type === 'Sleeving')
+    expect(rows.map((r) => [r.ref, r.partNumber])).toEqual([
+      ['SL1', 'PVC tube 5mm BK'],
+      ['SL2', 'HS-6'],
+      ['SL3', 'PVC tube 5mm BK']
+    ])
   })
 })

@@ -3,8 +3,9 @@ import type { HarnessDocument } from '@shared/model/schema'
 import type { ThemeName } from '../useTheme'
 import { strokeForColor } from '@shared/model/colors'
 import { describeEndpoint, endpointNodeId } from '@shared/model/describe'
-import { endpointHandleId, parseHandleId, sameEndpoint } from '@shared/model/endpoints'
+import { endpointHandleId, parseHandleId, sameEndpoint, type HandleSide } from '@shared/model/endpoints'
 import { sortedCavities } from '@shared/model/anchors'
+import { wireHandles } from './wireSides'
 
 // Re-exported so existing renderer imports (`./toFlow`) keep working after these
 // pure helpers moved to the shared layer for the SVG/BOM exporter to reuse.
@@ -13,16 +14,20 @@ export { strokeForColor, describeEndpoint, endpointHandleId, parseHandleId, same
 export interface ConnectorNodeData extends Record<string, unknown> {
   designator: string
   cavities: { id: string; position: string; status: string }[]
-  exitSide: 'left' | 'right' | 'top' | 'bottom'
+  exitSide: 'left' | 'right' | 'top' | 'bottom' | 'nearest'
 }
 export interface TerminalNodeData extends Record<string, unknown> {
   designator: string
   kind: string
   landsOn?: string
+  /** The sides wires meet it on (`wireSides.ts`); its other handles stay hidden until hover. */
+  sides?: HandleSide[]
 }
 export interface SpliceNodeData extends Record<string, unknown> {
   designator: string
   kind: string
+  /** As `TerminalNodeData.sides`. */
+  sides?: HandleSide[]
 }
 export interface BranchNodeData extends Record<string, unknown> {
   highlighted?: boolean
@@ -64,10 +69,10 @@ export interface SheetNodeData extends Record<string, unknown> {
 }
 
 export interface BlockNodeData extends Record<string, unknown> {
-  kind: 'pinout' | 'bom' | 'picture'
+  kind: 'pinout' | 'bom' | 'tolerance' | 'picture'
   /**
-   * Connector / free-terminal id (pinout), body id (picture) or `BOM_BLOCK_ID`
-   * (bom) — NOT the node id.
+   * Connector / free-terminal id (pinout), body id (picture), `BOM_BLOCK_ID`
+   * (bom) or `TOLERANCE_BLOCK_ID` (tolerance) — NOT the node id.
    */
   refId: string
   w: number
@@ -76,6 +81,16 @@ export interface BlockNodeData extends Record<string, unknown> {
   svg: string
   /** True when the position came from `doc.drawing.blocks` (user-dragged). */
   pinned: boolean
+}
+
+export interface TreatmentsNodeData extends Record<string, unknown> {
+  /** Model mm of the treatments' bounding box — the node's position and its SVG viewBox origin. */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** The SAME markup the PDF prints — `renderTreatments` (WYSIWYG). */
+  svg: string
 }
 
 export type FlowNode =
@@ -88,7 +103,9 @@ export type FlowNode =
   | (Node<SheetNodeData> & { type: 'formboardSheet' })
   | (Node<BlockNodeData> & { type: 'pinoutTable' })
   | (Node<BlockNodeData> & { type: 'bomBlock' })
+  | (Node<BlockNodeData> & { type: 'toleranceBlock' })
   | (Node<BlockNodeData> & { type: 'pictureBlock' })
+  | (Node<TreatmentsNodeData> & { type: 'formboardTreatments' })
 
 /**
  * Project the electrical model + placements into React Flow nodes/edges.
@@ -162,17 +179,20 @@ export function documentToFlow(
   }
 
   const edges: Edge[] = []
+  // The side each wire meets a body on (`wireSides.ts`).
+  const handlesOf = wireHandles(doc, posOf)
   for (const w of doc.wires) {
     const [a, b] = w.ends
     const src = endpointNodeId(doc, a)
     const tgt = endpointNodeId(doc, b)
     if (!src || !tgt) continue
+    const [sourceHandle, targetHandle] = handlesOf(w)
     edges.push({
       id: w.id,
       source: src,
       target: tgt,
-      sourceHandle: endpointHandleId(a),
-      targetHandle: endpointHandleId(b),
+      sourceHandle,
+      targetHandle,
       type: 'wire',
       data: {
         base: w.color.base,
@@ -182,6 +202,16 @@ export function documentToFlow(
       }
     })
   }
+
+  // Which sides of each terminal/splice carry a wire: `<prefix>:<id>|<side>`.
+  const sidesOf = new Map<string, Set<HandleSide>>()
+  for (const e of edges)
+    for (const [node, h] of [[e.source, e.sourceHandle], [e.target, e.targetHandle]] as const) {
+      const side = h?.match(/[|](left|right|top|bottom)$/)?.[1] as HandleSide | undefined
+      if (side) sidesOf.set(node, (sidesOf.get(node) ?? new Set()).add(side))
+    }
+  for (const n of nodes)
+    if (n.type === 'freeTerminal' || n.type === 'splice') n.data.sides = [...(sidesOf.get(n.id) ?? [])]
 
   return { nodes, edges }
 }

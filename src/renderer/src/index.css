@@ -191,9 +191,9 @@ body,
   top: 14px;
   /* End left of the inspector card: its 14px gutter + 340px + a 10px gap. */
   right: 364px;
-  /* Above the inspector card (z 20): the view picker's menu drops down into
-     the band the card occupies and was opening underneath it. The strip is
-     `pointer-events: none`, so it never blocks clicks on the card. */
+  /* Above the inspector card (z 20), so nothing the strip opens can slide
+     underneath it. The strip is `pointer-events: none`, so it never blocks
+     clicks on the card. */
   z-index: 25;
 }
 .chrome--bottom {
@@ -304,7 +304,7 @@ body,
   background: var(--chip-border);
 }
 
-/* Split / Single. */
+/* Segmented toggles: Single / Split, and each pane's view (ViewPicker). */
 .seg {
   pointer-events: auto;
   display: inline-flex;
@@ -315,6 +315,9 @@ body,
   box-shadow: var(--chrome-shadow);
 }
 .seg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
   padding: 0 10px;
   border: none;
@@ -333,8 +336,15 @@ body,
   background: var(--row-hover);
   color: var(--ink);
 }
+/* "Left" / "Right" in front of a split pane's view toggle. */
+.seg__side {
+  align-self: center;
+  padding: 0 6px 0 8px;
+  color: var(--ink-mute);
+  font-size: 12px;
+}
 
-/* View picker: the chip plus its drop-down. */
+/* The Add menu: a chip plus its drop-down (BottomBar). */
 .vp {
   position: relative;
   pointer-events: auto;
@@ -553,6 +563,11 @@ body,
 .panel__section {
   padding: 10px 12px;
 }
+/* A hint inside an editor lines up with its fields; the section already pads. */
+.panel__section > .panel__hint {
+  padding-left: 0;
+  padding-right: 0;
+}
 /* Section headings — the design's uppercase 11px muted label, used both for the
    editor's own kind line and for the subheads inside it. */
 .panel__kind,
@@ -702,6 +717,53 @@ textarea.pf__input {
   border: 1px solid var(--chip-border);
   border-radius: 3px;
 }
+/* ColorPicker: fills the colour row; its list rows lead with a smaller swatch. */
+.pf__colorrow .pp {
+  flex: 1;
+  min-width: 0;
+}
+.pp__row .pf__swatch {
+  width: 12px;
+  height: 12px;
+  align-self: center;
+}
+/* Stripes: the add-a-stripe picker, then one chip per stripe with its ×. */
+.pf__stripes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pf__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pf__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px 1px 4px;
+  border: 1px solid var(--chip-border);
+  border-radius: 5px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.pf__chip .pf__swatch {
+  width: 12px;
+  height: 12px;
+}
+.pf__chip-del {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.pf__chip-del:hover {
+  color: var(--sev-error-text);
+}
 
 /* The pin table: a --table-bg plate with --table-line row rules and a muted
    position column, holding the same editable cells it always had.
@@ -781,6 +843,20 @@ textarea.pf__input {
   left: auto;
   right: 0;
 }
+/* Length tolerance bands: the three figures share the card, the unit select
+   and the ✕ get just what they need. */
+.cavtable--tolerance {
+  table-layout: fixed;
+}
+.cavtable--tolerance th:nth-child(4) {
+  width: 52px;
+}
+.cavtable--tolerance th:nth-child(5) {
+  width: 20px;
+}
+.tol__actions {
+  margin-top: 6px;
+}
 .cavtable__del {
   border: none;
   background: none;
@@ -813,9 +889,12 @@ textarea.pf__input {
   padding: 2px;
   list-style: none;
 }
+/* A description too long for the rest of the row wraps onto its own line under
+   the part number and shows in full: it is what tells near-identical parts apart. */
 .pp__row {
   display: flex;
-  gap: 0.5em;
+  flex-wrap: wrap;
+  column-gap: 0.5em;
   padding: 3px 6px;
   border-radius: 5px;
   cursor: pointer;
@@ -830,9 +909,8 @@ textarea.pf__input {
 }
 .pp__desc {
   color: var(--ink-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .pp__resolved {
   font-size: 11px;
@@ -884,8 +962,20 @@ textarea.pf__input {
   padding: 3px 8px 3px 18px;
   flex-direction: row-reverse;
 }
+/* "Nearest" connector: a handle on both edges of every row, the position between them. */
+.node--exit-both .cavity {
+  padding: 3px 18px;
+}
 .cavity__handle {
   background: var(--ink-soft);
+}
+/* A terminal's or splice's sides no wire uses (FourSideHandles): still there to
+   start or drop a wire on, but shown only while the body is hovered. */
+.react-flow__handle.handle--spare {
+  opacity: 0;
+}
+.react-flow__node:hover .react-flow__handle.handle--spare {
+  opacity: 1;
 }
 
 /* Cavity status: populated = normal; plugged = grayed out;

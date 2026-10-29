@@ -9,6 +9,7 @@ import { FormboardBodyNode } from './FormboardBodyNode'
 import { FormboardSegmentEdge } from './FormboardSegmentEdge'
 import { SheetNode } from './SheetNode'
 import { BlockNode } from './BlockNode'
+import { TreatmentsNode } from './TreatmentsNode'
 
 /**
  * The React Flow node/edge type registries the canvas renders with — one
@@ -29,6 +30,8 @@ export const HARNESS_NODE_TYPES: NodeTypes = {
   formboardSheet: SheetNode,
   pinoutTable: BlockNode,
   bomBlock: BlockNode,
+  toleranceBlock: BlockNode,
+  formboardTreatments: TreatmentsNode,
   pictureBlock: BlockNode
 }
 

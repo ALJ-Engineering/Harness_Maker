@@ -5,7 +5,7 @@ import { sheetMm } from '@shared/print/sheet'
 import { outsideSheetFindings } from '@shared/print/sheetFindings'
 import { wiringTable, connectorPinouts, type ConnectorPinout } from '@shared/print/tableData'
 import type { Cell, Row } from '@shared/print/tables'
-import type { LibraryContext } from './session'
+import type { LibraryContext } from './libraryContext'
 import { incompleteReasons } from './rails'
 
 export interface WiringRow {

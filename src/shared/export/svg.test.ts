@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { documentToSvg, renderDrawingGroup } from './svg'
 import { demoDocument, emptyDocument } from '../model/document'
-import { computeFormboard, BODY_DOT_R, LABEL_FONT } from '../model/formboard'
+import { computeFormboard, BODY_DOT_R, LABEL_FONT, SLEEVE_CALLOUT_GAP } from '../model/formboard'
 import { fmt, escapeXml } from '../print/text'
+import { strokeForColor } from '../model/colors'
 import type { HarnessDocument } from '../model/schema'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -584,5 +585,147 @@ describe('renderDrawingGroup — broken typed length prints red', () => {
     expect(labels).toHaveLength(1)
     expect(labels[0]).toMatch(/>2<\/text>$/)
     expect(labels[0]).not.toContain('#d32f2f')
+  })
+})
+
+describe('sleeve callout', () => {
+  /** Two bodies joined by one run from `a` to `b`, sleeved PVC 5mm BK over it. */
+  function sleevedRun(a: { x: number; y: number }, b: { x: number; y: number }): HarnessDocument {
+    const d = emptyDocument()
+    d.connectors = [
+      { id: 'cA', designator: 'A', cavities: [] },
+      { id: 'cB', designator: 'B', cavities: [] }
+    ]
+    d.placements = [
+      { refId: 'cA', pos: a },
+      { refId: 'cB', pos: b }
+    ]
+    d.segments = [{ id: 's', from: { type: 'body', refId: 'cA' }, to: { type: 'body', refId: 'cB' } }]
+    d.sleeving = [
+      { id: 'sl', target: { type: 'bundle', bundleId: 'x' }, span: { segmentIds: ['s'] }, sleevingType: 'pvc', size: '5mm', color: 'BK' }
+    ]
+    return d
+  }
+  const callout = (d: HarnessDocument) => computeFormboard(d).treatments[0].callouts![0]
+
+  it('names the sleeve by ref, description and BOM item, and the PDF prints it', () => {
+    const d = sleevedRun({ x: 0, y: 0 }, { x: 100, y: 0 })
+    expect(callout(d).text).toBe('SL1 PVC tube 5mm BK [1]')
+    d.sleeving[0].part = { partNumber: 'PVC-5-BK' }
+    expect(callout(d).text).toBe('SL1 PVC tube 5mm BK [1]')
+    const svg = renderDrawingGroup(computeFormboard(d))
+    expect(svg).toContain('class="treatment-label treatment-label--sleeving"')
+    expect(svg).toContain('>SL1 PVC tube 5mm BK [1]</text>')
+  })
+
+  it('sits a quarter of the way along, below a level run and right of a vertical one', () => {
+    const level = callout(sleevedRun({ x: 0, y: 0 }, { x: 100, y: 0 })).rect
+    expect(level.x + level.w / 2).toBeCloseTo(25, 6)
+    expect(level.y).toBeCloseTo(SLEEVE_CALLOUT_GAP, 6)
+    const upright = callout(sleevedRun({ x: 0, y: 0 }, { x: 0, y: 100 })).rect
+    expect(upright.x).toBeCloseTo(SLEEVE_CALLOUT_GAP, 6)
+    expect(upright.y + upright.h / 2).toBeCloseTo(25, 6)
+  })
+
+  it('keeps clear of a diagonal run along its whole box', () => {
+    const r = callout(sleevedRun({ x: 0, y: 0 }, { x: 100, y: 100 })).rect
+    // Signed distance of each box corner from the line y = x: all on one side, none nearer than the gap.
+    const corners = [
+      [r.x, r.y],
+      [r.x + r.w, r.y],
+      [r.x, r.y + r.h],
+      [r.x + r.w, r.y + r.h]
+    ].map(([x, y]) => (y - x) / Math.SQRT2)
+    expect(Math.min(...corners)).toBeGreaterThanOrEqual(SLEEVE_CALLOUT_GAP - 1e-9)
+  })
+})
+
+describe('sleeve callouts on a shared run', () => {
+  it('stack outward instead of printing on top of each other', () => {
+    const d = emptyDocument()
+    d.connectors = [
+      { id: 'cA', designator: 'A', cavities: [] },
+      { id: 'cB', designator: 'B', cavities: [] }
+    ]
+    d.placements = [
+      { refId: 'cA', pos: { x: 0, y: 0 } },
+      { refId: 'cB', pos: { x: 100, y: 0 } }
+    ]
+    d.segments = [{ id: 's', from: { type: 'body', refId: 'cA' }, to: { type: 'body', refId: 'cB' } }]
+    const span = { segmentIds: ['s'] }
+    d.sleeving = [
+      { id: 'a', target: { type: 'bundle', bundleId: 'x' }, span, sleevingType: 'pvc', size: '5mm', color: 'BK' },
+      { id: 'b', target: { type: 'bundle', bundleId: 'x' }, span, sleevingType: 'heatshrink', size: '6mm' }
+    ]
+    const [a, b] = computeFormboard(d).treatments.map((t) => t.callouts![0].rect)
+    expect(a.y).toBeCloseTo(SLEEVE_CALLOUT_GAP, 6)
+    expect(b.y).toBeGreaterThanOrEqual(a.y + a.h)
+  })
+})
+
+describe('sleeve callouts per piece', () => {
+  it('a sleeve over two segments gets one callout beside each segment', () => {
+    const d = emptyDocument()
+    d.connectors = [
+      { id: 'cA', designator: 'A', cavities: [] },
+      { id: 'cB', designator: 'B', cavities: [] },
+      { id: 'cC', designator: 'C', cavities: [] }
+    ]
+    d.placements = [
+      { refId: 'cA', pos: { x: 0, y: 0 } },
+      { refId: 'cB', pos: { x: 100, y: 0 } },
+      { refId: 'cC', pos: { x: 100, y: 200 } }
+    ]
+    d.segments = [
+      { id: 's1', from: { type: 'body', refId: 'cA' }, to: { type: 'body', refId: 'cB' } },
+      { id: 's2', from: { type: 'body', refId: 'cB' }, to: { type: 'body', refId: 'cC' } }
+    ]
+    d.sleeving = [
+      { id: 'sl', target: { type: 'bundle', bundleId: 'x' }, span: { segmentIds: ['s1', 's2'] }, sleevingType: 'pvc', size: '5mm', color: 'BK' }
+    ]
+    const [first, second] = computeFormboard(d).treatments[0].callouts!
+    expect(first.text).toBe('SL1.1 PVC tube 5mm BK [1]')
+    expect(second.text).toBe('SL1.2 PVC tube 5mm BK [2]')
+    // Level s1: below it, a quarter along (x = 25). Upright s2: right of it, a quarter down (y = 50).
+    expect(first.rect.x + first.rect.w / 2).toBeCloseTo(25, 6)
+    expect(first.rect.y).toBeCloseTo(SLEEVE_CALLOUT_GAP, 6)
+    expect(second.rect.x).toBeCloseTo(100 + SLEEVE_CALLOUT_GAP, 6)
+    expect(second.rect.y + second.rect.h / 2).toBeCloseTo(50, 6)
+  })
+})
+
+describe('sleeve colour', () => {
+  function run(color?: string): HarnessDocument {
+    const d = emptyDocument()
+    d.connectors = [
+      { id: 'cA', designator: 'A', cavities: [] },
+      { id: 'cB', designator: 'B', cavities: [] }
+    ]
+    d.placements = [
+      { refId: 'cA', pos: { x: 0, y: 0 } },
+      { refId: 'cB', pos: { x: 100, y: 0 } }
+    ]
+    d.segments = [{ id: 's', from: { type: 'body', refId: 'cA' }, to: { type: 'body', refId: 'cB' } }]
+    d.sleeving = [
+      { id: 'sl', target: { type: 'bundle', bundleId: 'x' }, span: { segmentIds: ['s'] }, sleevingType: 'heatshrink', ...(color ? { color } : {}) }
+    ]
+    return d
+  }
+
+  it('draws the band in the sleeve colour with a dark edge, or the default blue without one', () => {
+    const black = renderDrawingGroup(computeFormboard(run('BK')))
+    expect(black).toContain(`class="treatment treatment--sleeving" d="M 0 0 L 100 0" stroke="${strokeForColor('BK')}"`)
+    expect(black).toContain('class="treatment treatment--sleeving-edge"')
+    const white = renderDrawingGroup(computeFormboard(run('WH')))
+    expect(white).toContain(`stroke="${strokeForColor('WH')}"`)
+    const plain = renderDrawingGroup(computeFormboard(run()))
+    expect(plain).toContain('class="treatment treatment--sleeving" d="M 0 0 L 100 0" stroke="#4a90d9"')
+    expect(plain).not.toContain('treatment--sleeving-edge')
+  })
+
+  it('draws the band under the run, so the wire line stays on top', () => {
+    const svg = renderDrawingGroup(computeFormboard(run('YE')))
+    expect(svg.indexOf('treatment--sleeving')).toBeGreaterThan(-1)
+    expect(svg.indexOf('treatment--sleeving')).toBeLessThan(svg.indexOf('class="segment'))
   })
 })

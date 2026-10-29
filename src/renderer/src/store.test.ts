@@ -3,6 +3,7 @@ import { useHarnessStore } from './store'
 import { emptyDocument, demoDocument } from '@shared/model/document'
 import { routeConnected, wireLength } from '@shared/model/geometry'
 import type { HarnessDocument } from '@shared/model/schema'
+import { IPC_620_LENGTH_TOLERANCE } from '@shared/model/schema'
 import { newLibraryPart, type LibraryPart } from '@shared/parts/librarySchema'
 import { LibraryCatalog } from '@shared/parts/catalog'
 import { runDrc } from '@shared/drc'
@@ -133,6 +134,101 @@ describe('history (undo/redo)', () => {
     s().applyEdit((d) => d.connectors.push({ id: 'c2', designator: 'X2', cavities: [] }))
     expect(s().dirty).toBe(true)
     s().undo() // back to the saved 1-connector state
+    expect(s().dirty).toBe(false)
+  })
+
+  it('markSaved with the written document stays dirty for an edit made during the write', () => {
+    const written = s().doc
+    s().applyEdit((d) => d.connectors.push({ id: 'c1', designator: 'X1', cavities: [] }))
+    s().markSaved('/tmp/test.harness.json', written)
+    expect(s().savedDoc).toBe(written)
+    expect(s().dirty).toBe(true)
+    s().undo() // back to what is on disk
+    expect(s().dirty).toBe(false)
+  })
+
+  it('markSaved with the current document is clean', () => {
+    s().applyEdit((d) => d.connectors.push({ id: 'c1', designator: 'X1', cavities: [] }))
+    s().markSaved('/tmp/test.harness.json', s().doc)
+    expect(s().dirty).toBe(false)
+  })
+})
+
+describe('batchEdit', () => {
+  beforeEach(() => resetEmpty())
+  const add = (id: string) => s().applyEdit((d) => d.connectors.push({ id, designator: id, cavities: [] }))
+
+  it('collapses the actions it runs into ONE undo step', () => {
+    add('c0')
+    const before = s().doc
+    expect(
+      s().batchEdit(() => {
+        add('c1')
+        add('c2')
+        add('c3')
+        return true
+      })
+    ).toBe(true)
+    expect(s().doc.connectors).toHaveLength(4)
+    expect(s().past).toHaveLength(2)
+    expect(s().past[1]).toBe(before)
+    expect(s().dirty).toBe(true)
+    s().undo()
+    expect(s().doc).toBe(before)
+  })
+
+  it('a refusal restores doc, past, future and dirty exactly', () => {
+    add('c0')
+    s().undo() // leaves a redo entry, so `future` is non-empty too
+    const snap = s()
+    expect(
+      s().batchEdit(() => {
+        add('c1')
+        add('c2')
+        return false
+      })
+    ).toBe(false)
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+    expect(s().future).toBe(snap.future)
+    expect(s().dirty).toBe(snap.dirty)
+  })
+
+  it('a throw restores the snapshot and rethrows', () => {
+    const snap = s()
+    expect(() =>
+      s().batchEdit(() => {
+        add('c1')
+        throw new Error('boom')
+      })
+    ).toThrow('boom')
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+    expect(s().dirty).toBe(false)
+  })
+
+  it('a run that changes nothing leaves no history entry', () => {
+    add('c0')
+    const snap = s()
+    expect(s().batchEdit(() => (s().applyEdit(() => {}), true))).toBe(true)
+    expect(s().doc).toBe(snap.doc)
+    expect(s().past).toBe(snap.past)
+  })
+
+  it('keeps the history limit', () => {
+    for (let i = 0; i < 200; i++) add(`p${i}`)
+    expect(s().past).toHaveLength(200)
+    const before = s().doc
+    s().batchEdit(() => (add('x'), add('y'), true))
+    expect(s().past).toHaveLength(200)
+    expect(s().past[199]).toBe(before)
+  })
+
+  it('batch back to the saved document is clean', () => {
+    const saved = s().doc
+    add('c0')
+    s().batchEdit(() => (s().undo(), true))
+    expect(s().doc).toBe(saved)
     expect(s().dirty).toBe(false)
   })
 })
@@ -877,6 +973,114 @@ describe('removeWire prunes a dangling bundle-targeted sleeving', () => {
   })
 })
 
+describe('reconnectWire (drag a wire end to another endpoint)', () => {
+  beforeEach(() => reset())
+
+  /** w1 a1→P→sPR→R→b1 and w2 a2→P→sPR→R→b2, bundled over sPR; w1 is red 1.5 mm². */
+  function bundled(): void {
+    s().applyEdit((d) => {
+      d.branchPoints.push({ id: 'P', pos: { x: 40, y: 0 } }, { id: 'R', pos: { x: 80, y: 0 } })
+      d.segments.push({ id: 'sPR', from: { type: 'branch', branchId: 'P' }, to: { type: 'branch', branchId: 'R' } })
+      for (const [w, a, b] of [['w1', 'a1', 'b1'], ['w2', 'a2', 'b2']]) {
+        d.wires.push({ id: w, ends: [{ type: 'cavity', cavityId: a }, { type: 'cavity', cavityId: b }], gauge: { value: 1.5, unit: 'mm2' }, color: { base: 'RD' } })
+        d.segments.push(
+          { id: `${a}P`, from: { type: 'body', refId: a }, to: { type: 'branch', branchId: 'P' } },
+          { id: `R${b}`, from: { type: 'branch', branchId: 'R' }, to: { type: 'body', refId: b } }
+        )
+        d.wireRoutes.push({ wireId: w, path: [`${a}P`, 'sPR', `R${b}`] })
+      }
+      d.bundles.push({ id: 'bnd', segmentIds: ['sPR'], memberWireIds: ['w1', 'w2'] })
+      // A second cavity on b1's connector, for a move that stays on one body.
+      d.connectors.find((c) => c.id === 'b1')!.cavities.push({ id: 'b1-2', position: '2', status: 'populated' })
+    })
+  }
+  const route = (w: string) => s().doc.wireRoutes.find((r) => r.wireId === w)?.path
+  const w1 = () => s().doc.wires.find((w) => w.id === 'w1')!
+
+  it('to another cavity of the same connector: only the end changes, the route stays, one undo step', () => {
+    bundled()
+    const before = s().past.length
+    const routeBefore = route('w1')
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'b1-2' })).toBe(true)
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1-2' })
+    expect(w1().color).toEqual({ base: 'RD' })
+    expect(w1().gauge).toEqual({ value: 1.5, unit: 'mm2' })
+    expect(route('w1')).toEqual(routeBefore)
+    expect(s().past.length).toBe(before + 1)
+    s().undo()
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1' })
+  })
+
+  it('to another connector: only the last leg changes, so the wire stays in its bundle', () => {
+    bundled()
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'c' })).toBe(true)
+    const path = route('w1')!
+    expect(path.slice(0, 2)).toEqual(['a1P', 'sPR'])
+    const leg = s().doc.segments.find((g) => g.id === path[2])!
+    expect([leg.from, leg.to]).toEqual([{ type: 'branch', branchId: 'R' }, { type: 'body', refId: 'c' }])
+    // The bundle still carries both wires; the old leg into b1 had no other wire and is gone.
+    expect(s().doc.bundles.map((b) => [...b.memberWireIds].sort())).toEqual([['w1', 'w2']])
+    expect(s().doc.segments.some((g) => g.id === 'Rb1')).toBe(false)
+    expect(routeConnected(s().doc, 'w1')).toBe(true)
+    s().undo()
+    expect(route('w1')).toEqual(['a1P', 'sPR', 'Rb1'])
+  })
+
+  it('moving the first end works the same way', () => {
+    bundled()
+    expect(s().reconnectWire('w1', 0, { type: 'cavity', cavityId: 'c' })).toBe(true)
+    const path = route('w1')!
+    expect(path.slice(1)).toEqual(['sPR', 'Rb1'])
+    const leg = s().doc.segments.find((g) => g.id === path[0])!
+    expect([leg.from, leg.to]).toContainEqual({ type: 'body', refId: 'c' })
+    expect([leg.from, leg.to]).toContainEqual({ type: 'branch', branchId: 'P' })
+  })
+
+  it("a label on the wire's old leg is re-anchored onto its new route", () => {
+    bundled()
+    s().applyEdit((d) => {
+      d.labels.push({ id: 'L', target: { type: 'wire', wireId: 'w1' }, kind: 'wireMarker', text: 'M', pos: { x: 0, y: 0 }, anchor: { segmentId: 'Rb1', fraction: 0.5 } })
+    })
+    s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'c' })
+    const label = s().doc.labels.find((l) => l.id === 'L')!
+    expect(route('w1')).toContain(label.anchor!.segmentId)
+  })
+
+  it('both ends on one body afterwards: no route, as for a jumper, and the bundle dissolves', () => {
+    bundled()
+    s().applyEdit((d) => {
+      d.connectors.find((c) => c.id === 'a1')!.cavities.push({ id: 'a1-2', position: '2', status: 'populated' })
+    })
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'a1-2' })).toBe(true)
+    expect(route('w1')).toBeUndefined()
+    expect(s().doc.bundles).toHaveLength(0)
+  })
+
+  it('a wire without a route gets the direct one', () => {
+    const w = s().addWire({ type: 'cavity', cavityId: 'x' }, { type: 'cavity', cavityId: 'y' })
+    s().applyEdit((d) => {
+      d.wireRoutes = d.wireRoutes.filter((r) => r.wireId !== w)
+    })
+    expect(s().reconnectWire(w, 1, { type: 'cavity', cavityId: 'z' })).toBe(true)
+    const path = route(w)!
+    expect(path).toHaveLength(1)
+    const seg = s().doc.segments.find((g) => g.id === path[0])!
+    expect([seg.from, seg.to]).toEqual([{ type: 'body', refId: 'x' }, { type: 'body', refId: 'z' }])
+  })
+
+  it('refuses, with no history entry, the same end, the other end, a missing target or a shield', () => {
+    bundled()
+    const before = s().past.length
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'b1' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'a1' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'cavity', cavityId: 'nope' })).toBe(false)
+    expect(s().reconnectWire('w1', 1, { type: 'shield', cableId: 'cab', end: 'a' })).toBe(false)
+    expect(s().reconnectWire('nope', 1, { type: 'cavity', cavityId: 'c' })).toBe(false)
+    expect(s().past.length).toBe(before)
+    expect(w1().ends[1]).toEqual({ type: 'cavity', cavityId: 'b1' })
+  })
+})
+
 describe('disconnectWireAtBranch store action', () => {
   beforeEach(() => reset())
 
@@ -1303,6 +1507,34 @@ describe('commitGesture (B5)', () => {
     expect(s().doc.placements.find((p) => p.refId === c2)!.pos).toEqual(p2)
     expect(s().doc.labels.find((l) => l.id === labelId)!.pos).toEqual({ x: 1, y: 1 })
     expect(s().doc.drawing.blocks).toEqual(blocksBefore)
+  })
+
+  it('an anchor move with a segmentId re-pins the label to that segment; an unknown one is ignored', () => {
+    const wireId = s().addWire({ type: 'cavity', cavityId: 'a' }, { type: 'cavity', cavityId: 'b' })
+    const seg0 = s().doc.wireRoutes.find((r) => r.wireId === wireId)!.path[0]
+    s().insertBranchPoint(seg0, { x: 10, y: 0 })
+    const [first, second] = s().doc.wireRoutes.find((r) => r.wireId === wireId)!.path
+    const labelId = s().addLabel({ type: 'wire', wireId }, 'wireMarker', 'M', { x: 0, y: 0 })
+    s().applyEdit((d) => {
+      d.labels.find((l) => l.id === labelId)!.anchor = { segmentId: first, fraction: 0.5 }
+    })
+    const before = s().past.length
+    s().commitGesture({
+      nodeMoves: [],
+      target: 'physical',
+      labelMoves: [],
+      anchorMoves: [{ id: labelId, segmentId: second, fraction: 0.25 }]
+    })
+    expect(s().doc.labels.find((l) => l.id === labelId)!.anchor).toEqual({ segmentId: second, fraction: 0.25 })
+    expect(s().past.length).toBe(before + 1)
+    s().commitGesture({
+      nodeMoves: [],
+      target: 'physical',
+      labelMoves: [],
+      anchorMoves: [{ id: labelId, segmentId: 'no-such-segment', fraction: 0.75 }]
+    })
+    expect(s().doc.labels.find((l) => l.id === labelId)!.anchor).toEqual({ segmentId: second, fraction: 0.25 })
+    expect(s().past.length).toBe(before + 1)
   })
 
   it('commitGesture with no effective change pushes no history entry (B5)', () => {
@@ -2213,20 +2445,32 @@ describe('library-driven actions', () => {
     expect(s().doc.splices.find((x) => x.id === sp)).toMatchObject({ kind: 'weld', part: { partNumber: 'S1' } })
   })
 
-  it('applyCavityTemplate replaces cavities on a wire-free connector, refuses a wired one', () => {
+  it('applyCavityTemplate replaces cavities, keeping the wired cavity at a shared position', () => {
     const id = s().addConnector({ x: 0, y: 0 })
     expect(s().applyCavityTemplate(id, housingPart, resolve)).toBe(true)
     const c = s().doc.connectors.find((x) => x.id === id)!
     expect(c.cavities.map((cv) => cv.position)).toEqual(['A', 'B'])
     expect(c.gender).toBe('female')
-    // wire it, then try again
+    // wire A, then apply a wider template that still has A
     const other = s().addConnector({ x: 50, y: 0 })
     const cavA = c.cavities[0].id
     const cavO = s().doc.connectors.find((x) => x.id === other)!.cavities[0].id
     s().addWire({ type: 'cavity', cavityId: cavA }, { type: 'cavity', cavityId: cavO })
+    const wider: LibraryPart = {
+      ...housingPart, partNumber: 'H2', connector: { cavities: [{ position: 'A' }, { position: 'B' }, { position: 'C' }] }
+    }
+    expect(s().applyCavityTemplate(id, wider, resolve)).toBe(true)
+    const c2 = s().doc.connectors.find((x) => x.id === id)!
+    expect(c2.housing?.partNumber).toBe('H2')
+    expect(c2.cavities.map((cv) => cv.position)).toEqual(['A', 'B', 'C'])
+    expect(c2.cavities[0].id).toBe(cavA)
+    expect(s().doc.wires[0].ends.some((e) => e.type === 'cavity' && e.cavityId === cavA)).toBe(true)
+    // a template without A would orphan the wire: refused, no history entry
     const before = s().past.length
-    expect(s().applyCavityTemplate(id, housingPart, resolve)).toBe(false)
+    const noA: LibraryPart = { ...housingPart, partNumber: 'H3', connector: { cavities: [{ position: '1' }] } }
+    expect(s().applyCavityTemplate(id, noA, resolve)).toBe(false)
     expect(s().past.length).toBe(before)
+    expect(s().doc.connectors.find((x) => x.id === id)!.housing?.partNumber).toBe('H2')
   })
 
   it('refreshPartRefs rewrites stale descriptions, no-op adds no history entry', () => {
@@ -2426,5 +2670,47 @@ describe('addCableFromPart', () => {
     s().undo()
     expect(s().doc.wires).toHaveLength(before)
     expect(s().doc.cables).toHaveLength(0)
+  })
+})
+
+describe('length-tolerance table', () => {
+  const ipc = () => ({ bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) })
+
+  it('setToleranceTable puts it on the drawing in one undo step, and no-ops on the same table', () => {
+    s().setDocument(demoDocument(), null)
+    const before = s().past.length
+    s().setToleranceTable(ipc())
+    expect(s().doc.drawing.toleranceTable).toEqual(ipc())
+    expect(s().past.length).toBe(before + 1)
+    s().setToleranceTable(ipc())
+    expect(s().past.length).toBe(before + 1)
+    s().undo()
+    expect(s().doc.drawing.toleranceTable).toBeUndefined()
+  })
+
+  it('its block pins only while there is a table; removing the table drops the pin too', () => {
+    s().setDocument(demoDocument(), null)
+    const before = s().past.length
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    expect(s().past.length).toBe(before)
+    s().setToleranceTable(ipc())
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    expect(s().doc.drawing.blocks?.tolerance).toEqual({ x: 5, y: 6 })
+    s().setToleranceTable(undefined)
+    expect(s().doc.drawing.toleranceTable).toBeUndefined()
+    expect(s().doc.drawing.blocks).toBeUndefined()
+  })
+
+  it('clearBlockPos returns it to auto-placement and leaves other pins alone', () => {
+    s().setDocument(demoDocument(), null)
+    s().setToleranceTable(ipc())
+    s().setBlockPos({ kind: 'bom', pos: { x: 1, y: 2 } })
+    s().setBlockPos({ kind: 'tolerance', pos: { x: 5, y: 6 } })
+    const n = s().past.length
+    s().clearBlockPos('tolerance')
+    expect(s().doc.drawing.blocks).toEqual({ bom: { x: 1, y: 2 } })
+    expect(s().past.length).toBe(n + 1)
+    s().clearBlockPos('tolerance')
+    expect(s().past.length).toBe(n + 1)
   })
 })

@@ -1,6 +1,6 @@
 import { sanitisePartNumber } from '@shared/parts/images'
 import type { PartKind } from '@shared/parts/librarySchema'
-import type { LibraryContext } from './session'
+import type { LibraryContext } from './libraryContext'
 
 /**
  * Why a library record is not a "complete record" (empty = complete): manufacturer,

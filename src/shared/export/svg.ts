@@ -1,5 +1,5 @@
 import type { HarnessDocument, Vec2 } from '../model/schema'
-import type { FbLayout } from '../model/formboard'
+import type { FbLayout, FbTreatment } from '../model/formboard'
 import { computeFormboard, lengthLabel, labelDisplayText, LABEL_FONT, MIN_FONT, BODY_DOT_R } from '../model/formboard'
 import { strokeForColor } from '../model/colors'
 
@@ -49,6 +49,11 @@ export function renderDrawingGroup(layout: FbLayout, opts: DrawingRenderOpts = {
   const { minX, maxY } = layout.bbox
 
   const parts: string[] = []
+
+  // ── Treatments (sleeving + twist), under the runs: a sleeve is a band the
+  //    wire passes through, so the wire line stays on top ─────────────────────
+  const treatments = renderTreatments(layout.treatments, opts)
+  if (treatments) parts.push(treatments)
 
   // ── Segments (drawn under bodies) ──────────────────────────────────────────
   for (const seg of layout.segments) {
@@ -114,29 +119,6 @@ export function renderDrawingGroup(layout: FbLayout, opts: DrawingRenderOpts = {
     )
   }
 
-  // ── Treatments (sleeving + twist) ──────────────────────────────────────────
-  for (const t of layout.treatments) {
-    const d = pointsToD(t.points)
-    if (!d) continue
-    if (t.kind === 'sleeving') {
-      parts.push(
-        `<path class="treatment treatment--sleeving" d="${d}" stroke="#4a90d9" stroke-width="${f(4)}" fill="none" stroke-linecap="round" stroke-opacity="0.45"/>`
-      )
-    } else {
-      parts.push(
-        `<path class="treatment treatment--twist" d="${d}" stroke="#e8a020" stroke-width="${f(4)}" fill="none" stroke-linecap="round" stroke-opacity="0.45" stroke-dasharray="3 2"/>`
-      )
-      if (t.layLengthMm != null) {
-        const a = t.points[0]
-        const b = t.points[t.points.length - 1]
-        const mx = (a.x + b.x) / 2
-        const my = (a.y + b.y) / 2
-        parts.push(
-          `<text class="treatment-label" x="${fmt(mx)}" y="${fmt(my - 2 * ts)}" font-size="${f(MIN_FONT)}" text-anchor="middle" fill="#9a6500">lay ${fmt(t.layLengthMm)} mm</text>`
-        )
-      }
-    }
-  }
 
   // ── Labels ─────────────────────────────────────────────────────────────────
   for (const lbl of layout.labels) {
@@ -167,6 +149,57 @@ export function renderDrawingGroup(layout: FbLayout, opts: DrawingRenderOpts = {
   return parts.join('\n')
 }
 
+
+
+/**
+ * Sleeving and twist, in MODEL mm: a 4 mm band along the run — a sleeve's in its
+ * own colour with a thin dark edge, translucent blue when it has none — a
+ * sleeve's callouts — one per cut piece, `SL1.2 PVC tube 5mm BK [7]`, each in
+ * the box `computeFormboard` reserved for it beside its segment — and a twist's lay length. Shared by the PDF drawing
+ * (`renderDrawingGroup`) and the formboard canvas, so both draw the same SVG.
+ */
+export function renderTreatments(treatments: FbTreatment[], opts: DrawingRenderOpts = {}): string {
+  const ts = opts.textScale ?? 1
+  const f = (mm: number): string => fmt(Number(mm.toFixed(2)) * ts)
+  const parts: string[] = []
+  for (const t of treatments) {
+    const d = pointsToD(t.points)
+    if (!d) continue
+    if (t.kind === 'sleeving') {
+      // In the sleeve's own colour, with a thin dark edge so a white or yellow
+      // sleeve still shows on white paper; no colour = the default blue band.
+      if (t.color) {
+        parts.push(
+          `<path class="treatment treatment--sleeving-edge" d="${d}" stroke="#333" stroke-width="${f(4.6)}" fill="none" stroke-linecap="round" stroke-opacity="0.6"/>`,
+          `<path class="treatment treatment--sleeving" d="${d}" stroke="${strokeForColor(t.color)}" stroke-width="${f(4)}" fill="none" stroke-linecap="round" stroke-opacity="0.75"/>`
+        )
+      } else {
+        parts.push(
+          `<path class="treatment treatment--sleeving" d="${d}" stroke="#4a90d9" stroke-width="${f(4)}" fill="none" stroke-linecap="round" stroke-opacity="0.45"/>`
+        )
+      }
+      for (const c of t.callouts ?? []) {
+        parts.push(
+          `<text class="treatment-label treatment-label--sleeving" x="${fmt(c.rect.x)}" y="${fmt(c.rect.y + MIN_FONT * 1.05)}" font-size="${f(MIN_FONT)}" fill="#333">${escapeXml(c.text)}</text>`
+        )
+      }
+    } else {
+      parts.push(
+        `<path class="treatment treatment--twist" d="${d}" stroke="#e8a020" stroke-width="${f(4)}" fill="none" stroke-linecap="round" stroke-opacity="0.45" stroke-dasharray="3 2"/>`
+      )
+      if (t.layLengthMm != null) {
+        const a = t.points[0]
+        const b = t.points[t.points.length - 1]
+        const mx = (a.x + b.x) / 2
+        const my = (a.y + b.y) / 2
+        parts.push(
+          `<text class="treatment-label" x="${fmt(mx)}" y="${fmt(my - 2 * ts)}" font-size="${f(MIN_FONT)}" text-anchor="middle" fill="#9a6500">lay ${fmt(t.layLengthMm)} mm</text>`
+        )
+      }
+    }
+  }
+  return parts.join('\n')
+}
 export function documentToSvg(doc: HarnessDocument): string {
   const layout = computeFormboard(doc)
   const { bbox } = layout

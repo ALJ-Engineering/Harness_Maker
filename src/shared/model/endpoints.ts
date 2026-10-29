@@ -16,9 +16,24 @@ export function endpointHandleId(ep: Endpoint): string {
   }
 }
 
-/** Inverse of endpointHandleId: parse a handle id back to an Endpoint. */
+/** A side of a schematic body, where a wire meets it. */
+export type HandleSide = 'left' | 'right' | 'top' | 'bottom'
+
+/**
+ * The handle id of ONE SIDE of an endpoint: a free terminal or splice has a
+ * handle on each of its four sides, and a cavity of a connector whose pins exit
+ * "nearest" one on each side of its row; the schematic projection picks a side
+ * per wire. `parseHandleId` strips the side, so every side is the same
+ * electrical point — and `endpointHandleId`, the key nets are built on, never
+ * carries one.
+ */
+export function sideHandleId(ep: Endpoint, side: HandleSide): string {
+  return `${endpointHandleId(ep)}|${side}`
+}
+
+/** Inverse of endpointHandleId (and of sideHandleId): parse a handle id back to an Endpoint. */
 export function parseHandleId(handleId: string): Endpoint | null {
-  const [kind, ...rest] = handleId.split(':')
+  const [kind, ...rest] = handleId.replace(/\|(left|right|top|bottom)$/, '').split(':')
   switch (kind) {
     case 'cav':
       return { type: 'cavity', cavityId: rest.join(':') }

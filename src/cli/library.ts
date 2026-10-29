@@ -13,10 +13,14 @@ import {
   DATASHEET_MAX_BYTES,
   datasheetPath,
   importDatasheet,
+  importPicture,
   listParts,
+  picturePath,
   removeDatasheet,
+  removePicture,
   writePart
 } from '../main/partsLibrary'
+import { IMAGE_MAX_BYTES } from '../main/partsImages'
 import { renameWithRetry } from '../main/renameRetry'
 import { incompleteReasons, unreadableRecord } from './rails'
 import { openLibrary } from './session'
@@ -28,7 +32,8 @@ export const DATASHEET_TIMEOUT_MS = 60_000
 
 /**
  * Download `url` to `dest` (redirects followed, 50 MB cap, `timeoutMs` for the whole
- * download). Does not check the bytes are a PDF — `importDatasheet` does that.
+ * download). Does not check the bytes are a PDF — `importDatasheet` does that. A
+ * picture comes down through here too, capped at 5 MB, and `importPicture` checks it.
  */
 export async function fetchDatasheet(
   url: string,
@@ -118,20 +123,28 @@ async function recordFileIn(dir: string, stem: string): Promise<{ path: string }
   return { path }
 }
 
-export async function libraryPut(
-  dir: string,
-  recordPath: string,
-  opts: { datasheet?: string; fetchImpl?: FetchLike; timeoutMs?: number } = {}
-): Promise<PutResult> {
-  const fail = (problems: string[], partNumber?: string): PutResult => ({ ok: false, partNumber, problems })
+/** `datasheet` (a PDF) and `picture` (a PNG or JPEG) are each a local path or an http(s) URL. */
+type PutOpts = { datasheet?: string; picture?: string; fetchImpl?: FetchLike; timeoutMs?: number }
+
+const fail = (problems: string[], partNumber?: string): PutResult => ({ ok: false, partNumber, problems })
+
+export async function libraryPut(dir: string, recordPath: string, opts: PutOpts = {}): Promise<PutResult> {
   let text: string
   try {
     text = await readFile(recordPath, 'utf8')
   } catch (e) {
     return fail([`${recordPath}: ${(e as Error).message}`])
   }
+  return libraryPutText(dir, text, recordPath, opts)
+}
+
+/**
+ * `libraryPut` with the record's JSON already in hand (the app's MCP `library_put`);
+ * `source` names it in a parse problem, as the record file's path does for the CLI.
+ */
+export async function libraryPutText(dir: string, text: string, source: string, opts: PutOpts = {}): Promise<PutResult> {
   const parsed = parseLibraryPart(text)
-  if ('error' in parsed) return fail([`${recordPath}: ${parsed.error}`])
+  if ('error' in parsed) return fail([`${source}: ${parsed.error}`])
   const part = parsed.part
   const pn = part.partNumber
   const stem = sanitisePartNumber(pn)
@@ -160,30 +173,46 @@ export async function libraryPut(
 
   const scratch = await mkdtemp(join(tmpdir(), 'harness-put-'))
   try {
-    // Resolve the new datasheet to a local file before touching the library.
+    // Resolve the new datasheet and picture to local files before touching the library.
+    const local = async (src: string, name: string, maxBytes?: number): Promise<string> => {
+      if (!/^https?:\/\//i.test(src)) return src
+      const dest = join(scratch, name)
+      await fetchDatasheet(src, dest, opts.fetchImpl, maxBytes, opts.timeoutMs)
+      return dest
+    }
     let newSheet: string | undefined
-    if (opts.datasheet) {
-      if (/^https?:\/\//i.test(opts.datasheet)) {
-        newSheet = join(scratch, 'new.pdf')
-        try {
-          await fetchDatasheet(opts.datasheet, newSheet, opts.fetchImpl, undefined, opts.timeoutMs)
-        } catch (e) {
-          return fail([`${pn}: datasheet ${(e as Error).message}`], pn)
-        }
-      } else newSheet = opts.datasheet
+    let newPicture: string | undefined
+    try {
+      if (opts.datasheet) newSheet = await local(opts.datasheet, 'new.pdf')
+    } catch (e) {
+      return fail([`${pn}: datasheet ${(e as Error).message}`], pn)
+    }
+    try {
+      if (opts.picture) newPicture = await local(opts.picture, 'new-picture', IMAGE_MAX_BYTES)
+    } catch (e) {
+      return fail([`${pn}: picture ${(e as Error).message}`], pn)
     }
 
-    // Snapshot the datasheet (exact bytes, at its own path) for rollback.
+    // Snapshot the datasheet and picture (exact bytes, at their own paths) for rollback.
     let prevSheetPath: string | null
     let prevSheet: Buffer | null = null
+    let prevPicturePath: string | null = null
+    let prevPicture: Buffer | null = null
     try {
       prevSheetPath = await datasheetPath(dir, pn)
       if (prevSheetPath) prevSheet = await readFile(prevSheetPath)
     } catch (e) {
       return fail([`${pn}: cannot read the existing datasheet: ${(e as Error).message}`], pn)
     }
+    try {
+      if (newPicture) prevPicturePath = await picturePath(dir, pn)
+      if (prevPicturePath) prevPicture = await readFile(prevPicturePath)
+    } catch (e) {
+      return fail([`${pn}: cannot read the existing picture: ${(e as Error).message}`], pn)
+    }
 
     let sheetTouched = false
+    let pictureTouched = false
     let recordTouched = false
     /** Undo what this put wrote; never throws — a failure is reported as a problem. */
     const rollback = async (problems: string[]): Promise<PutResult> => {
@@ -196,8 +225,15 @@ export async function libraryPut(
           await removeDatasheet(dir, pn)
           if (prevSheetPath && prevSheet) await putBytes(prevSheetPath, prevSheet)
         }
+        if (pictureTouched) {
+          await removePicture(dir, pn)
+          if (prevPicturePath && prevPicture) await putBytes(prevPicturePath, prevPicture)
+        }
       } catch (e) {
-        problems = [...problems, `ROLLBACK FAILED: ${(e as Error).message} — check ${recordFile.path} and its datasheet by hand`]
+        problems = [
+          ...problems,
+          `ROLLBACK FAILED: ${(e as Error).message} — check ${recordFile.path}, its datasheet and its picture by hand`
+        ]
       }
       return fail(problems, pn)
     }
@@ -206,6 +242,12 @@ export async function libraryPut(
       if (newSheet) {
         sheetTouched = true
         await importDatasheet(dir, pn, newSheet)
+      }
+      if (newPicture) {
+        pictureTouched = true
+        await importPicture(dir, pn, newPicture).catch((e: Error) => {
+          throw new Error(`picture: ${e.message}`)
+        })
       }
       recordTouched = true
       await writePart(dir, part)
@@ -228,6 +270,8 @@ export async function libraryPut(
 export interface ShowResult {
   part: LibraryPart
   hasDatasheet: boolean
+  /** A picture is never required; this says whether the part has one. */
+  hasPicture: boolean
   incomplete: string[]
 }
 
@@ -242,6 +286,7 @@ export async function libraryShow(dir: string, pn: string): Promise<ShowResult |
   return {
     part,
     hasDatasheet: lib.datasheets.has(sanitisePartNumber(part.partNumber)),
+    hasPicture: (await picturePath(dir, part.partNumber)) !== null,
     incomplete: incompleteReasons(part.partNumber, lib)
   }
 }

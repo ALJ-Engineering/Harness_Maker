@@ -36,7 +36,8 @@ describe('outsideSheetFindings', () => {
         'outside-sheet:label:lbl-1',
         'outside-sheet:block:pinout:conn-x1',
         'outside-sheet:block:picture:conn-x2',
-        'outside-sheet:block:bom:bom'
+        'outside-sheet:block:bom:bom',
+        'outside-sheet:block:tolerance:tolerance'
       ],
       doc
     )
@@ -51,7 +52,8 @@ describe('outsideSheetFindings', () => {
       ['Label "PUMP" is outside the drawing sheet', []],
       ['Pinout table for X1 is outside the drawing sheet', []],
       ['Picture of X2 is outside the drawing sheet', []],
-      ['BOM block is outside the drawing sheet', []]
+      ['BOM block is outside the drawing sheet', []],
+      ['Length tolerance table is outside the drawing sheet', []]
     ])
   })
 

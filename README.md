@@ -21,16 +21,22 @@ sleeving and branch breakouts.
   and an optional shield drain). A bundle is loose wires taped together on the board. They can
   share limbs but are counted differently in the BOM.
 - **Sleeving, twists and labels** over any run of limbs, with exposed ends where wires break out.
+  Sleeving (PVC tube, heat shrink, braid, convoluted tube, tape) is drawn with a callout per piece:
+  each segment it covers is its own cut piece. The BOM lists the pieces as count × length
+  ("2 × 160 mm"), by library part or else by type, size and colour.
 - **Design-rule checks** — over 20 rules covering unconnected cavities, wires into empty
   cavities, splice and branch-point degree, unrouted wires, dangling references, gauge and colour
   mismatches across a net, limbs drawn off scale, bodies outside the sheet and stale part numbers.
 - **One PDF drawing set.** One fixed drawing sheet printed at exactly 1:1 (A4–A0 or a 914 mm
-  plotter roll up to 5 m long), with pinout tables, part pictures, BOM block and title block, followed
+  plotter roll up to 5 m long), with pinout tables, part pictures, BOM block, an optional length-tolerance table
+  (IPC/WHMA-A-620 values to start with, editable) and title block, followed
   by A4 BOM, wiring-table and cut-list pages. Never scaled to fit. BOM and cut list are also
   available as CSV.
 - **Parts library.** Parts live in a folder you choose: one JSON record per manufacturer part
   number, plus its picture, datasheet and your company logo for the title block.
 - **Headless CLI** for creating and editing harness files from scripts.
+- **Agent access (MCP).** Let an AI agent such as Claude Code or Claude Desktop read and edit the
+  drawing you have open, live and undoably.
 
 Harness files are plain JSON (`*.harness.json`), one file per harness, written to diff cleanly
 under version control.
@@ -114,8 +120,9 @@ npm run harness -- check /abs/path/loom.harness.json
 | `apply <file> <ops.json \| -> [--create]` | apply a batch of operations, all or nothing                  |
 | `check <file>`                            | design-rule findings, wiring table, pinouts, incomplete parts |
 | `show <file>`                             | bodies by designator, part numbers, wires, cables            |
-| `library put <record.json>`               | add or replace a part record (refused unless complete)       |
+| `library put <record.json>`               | add or replace a part record (refused unless complete); `--datasheet`, `--picture` |
 | `library show \| search \| dir`             | look up records and the library folder in use                |
+| `mcp [--port <n>]`                        | stdio bridge to the app's Agent access (for Claude Desktop)  |
 
 An operations file is a JSON array. Wire ends are written `X1:3` (designator and cavity) or a
 splice/terminal designator:
@@ -134,6 +141,42 @@ Every part number used must exist as a complete record in the parts library. The
 comes from `--library <dir>`, else `$HARNESS_LIBRARY`, else the app's setting. Add `--json` (and
 use `npm run --silent harness`) for machine-readable output. Pass absolute paths, because npm runs
 the tool from the repository root.
+
+## Agent access (MCP)
+
+The app can let an AI agent work on the drawing you have open, through the
+[Model Context Protocol](https://modelcontextprotocol.io). You watch the edits land on the canvas.
+Each agent call is one step for *Edit ▸ Undo*, and nothing is saved unless you ask for it.
+
+Turn it on with *Settings ▸ Agent access (MCP) ▸ Let AI agents edit the open document*. The app
+then listens on `http://127.0.0.1:47100/mcp`, reachable from this computer only; set `"mcpPort"` in
+`settings.json` to use another port. It is off until you turn it on.
+
+- **Claude Code:** *Settings ▸ Agent access (MCP) ▸ Copy Claude Code command* and run it in a
+  terminal:
+
+  ```bash
+  claude mcp add --transport http harness http://127.0.0.1:47100/mcp
+  ```
+
+- **Claude Desktop:** *Copy Claude Desktop config*, merge it into `claude_desktop_config.json`
+  (in Claude Desktop: *Settings ▸ Developer ▸ Edit Config*) and restart Claude Desktop. It runs
+  `harness mcp`, a bridge the installed app ships with. When you run the app from source, the
+  config uses `node` and `out/cli/harness.mjs`, which `npm run build` creates.
+
+| Tool                                           | Does                                                                          |
+|------------------------------------------------|-------------------------------------------------------------------------------|
+| `get_document`, `get_layout`, `check`          | read the drawing: bodies and cables, formboard geometry in mm, design-rule findings, wiring table, pinouts |
+| `apply_ops`                                    | the CLI's operations (place, wire, cable, cavity, set-wire, unwire, remove), all or nothing |
+| `edit_layout`                                  | move bodies and branch points, add or merge branch points, set limb lengths    |
+| `set_drawing`                                  | sheet size and title block                                                     |
+| `select`                                       | select an element so you can see what the agent means                          |
+| `save_document`                                | save to the drawing's own file (never Save As)                                 |
+| `library_search`, `library_show`, `library_put` | look up and add parts-library records, with their datasheet and picture        |
+
+The CLI's rules apply: every part must be a complete library record. Web pages cannot reach the
+server, but any program on this computer can while Agent access is on, so turn it off when you are
+not using it.
 
 ## Development
 

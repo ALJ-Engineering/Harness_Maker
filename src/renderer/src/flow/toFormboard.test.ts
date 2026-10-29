@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { documentToFormboard } from './toFormboard'
 import { documentToFlow } from './toFlow'
-import type { BlockNodeData, SheetNodeData } from './toFlow'
+import type { BlockNodeData, SheetNodeData, TreatmentsNodeData } from './toFlow'
 import { planBoard, TABLE_PAD } from '@shared/print/board'
 import { sheetMm } from '@shared/print/sheet'
 import { renderTable, TABLE_STYLE_SHEET } from '@shared/print/tables'
 import { renderBoardPage } from '@shared/print/template'
+import { renderTreatments } from '@shared/export/svg'
 import { computeFormboard } from '@shared/model/formboard'
 import { demoDocument, emptyDocument } from '@shared/model/document'
 import type { HarnessDocument } from '@shared/model/schema'
+import { IPC_620_LENGTH_TOLERANCE } from '@shared/model/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -442,6 +444,50 @@ describe('board furniture', () => {
     )
     for (const id of ['__sheet', '__bom', `tbl:${t0.id}`])
       expect(nodes.find((n) => n.id === id)!.deletable).toBe(false)
+  })
+
+  it('sleeves get one inert __treatments node drawing the printed band and callout', () => {
+    const d = demoDocument()
+    expect(documentToFormboard(d).nodes.some((n) => n.id === '__treatments')).toBe(false)
+    const seg = d.segments[0]
+    const wireId = d.wireRoutes.find((r) => r.path.includes(seg.id))!.wireId
+    d.sleeving = [
+      { id: 'sl', target: { type: 'wire', wireId }, span: { segmentIds: [seg.id] }, sleevingType: 'pvc', size: '5mm', color: 'BK' }
+    ]
+    const layout = computeFormboard(d)
+    const n = documentToFormboard(d).nodes.find((x) => x.id === '__treatments')!
+    expect(n.type).toBe('formboardTreatments')
+    expect([n.draggable, n.selectable, n.deletable, n.focusable]).toEqual([false, false, false, false])
+    // Above the sheet (-10), under the segment edges and body dots (0): the wire stays on top of the band.
+    expect(n.zIndex).toBe(-5)
+    const data = n.data as TreatmentsNodeData
+    expect(data.svg).toBe(renderTreatments(layout.treatments))
+    expect(data.svg).toContain('>SL1 PVC tube 5mm BK [1]</text>')
+    expect(n.position).toEqual({ x: data.x, y: data.y })
+    // The box holds the callout.
+    const r = layout.treatments[0].callouts![0].rect
+    expect(r.x).toBeGreaterThanOrEqual(data.x)
+    expect(r.y + r.h).toBeLessThanOrEqual(data.y + data.h + 1e-9)
+    // The printed page carries the same markup.
+    const page = renderBoardPage(d, planBoard(d, sheetMm(d.drawing.sheet), layout), {}, layout, { pageNoStart: 1, pageCount: 1 }).svg
+    expect(page).toContain(data.svg)
+  })
+
+  it('a tolerance table gets a toleranceBlock node that the printed page draws too', () => {
+    const d = demoDocument()
+    expect(documentToFormboard(d).nodes.some((n) => n.type === 'toleranceBlock')).toBe(false)
+    d.drawing.toleranceTable = { bands: IPC_620_LENGTH_TOLERANCE.map((b) => ({ ...b })) }
+    const layout = computeFormboard(d)
+    const plan = planBoard(d, sheetMm(d.drawing.sheet), layout)
+    const tol = plan.tolerance!
+    const n = documentToFormboard(d).nodes.find((x) => x.type === 'toleranceBlock')!
+    expect(n.id).toBe('__tolerance')
+    expect(n.deletable).toBe(false)
+    expect(n.position).toEqual({ x: tol.rect.x, y: tol.rect.y })
+    const svg = renderTable(0, 0, tol.spec!.cols, tol.spec!.rows, TABLE_STYLE_SHEET, { title: tol.title }).svg
+    expect((n.data as BlockNodeData).svg).toBe(svg)
+    const page = renderBoardPage(d, plan, {}, layout, { pageNoStart: 1, pageCount: 1 }).svg
+    expect(page).toContain(`data-block="tolerance" transform="translate(${tol.rect.x} ${tol.rect.y})">${svg}</g>`)
   })
 
   it('a body with a part image gets a pictureBlock node whose SVG IS the printed one', () => {
