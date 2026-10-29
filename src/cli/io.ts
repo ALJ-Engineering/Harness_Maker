@@ -7,4 +7,6 @@ export interface CliIO {
   platform: NodeJS.Platform
   /** All of stdin as text (for `apply <file> -`). */
   readStdin: () => Promise<string>
+  /** stdin line by line, as it arrives (for the `mcp` bridge, which must not wait for EOF). */
+  stdinLines: () => AsyncIterable<string>
 }

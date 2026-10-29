@@ -1,10 +1,14 @@
 import { readFile, writeFile, rm } from 'fs/promises'
 import type { HarnessDocument } from '@shared/model/schema'
-import { parseDocument, parseDocumentWithNotes, serializeDocument } from '@shared/model/serialize'
+import { parseDocumentWithNotes, serializeDocument } from '@shared/model/serialize'
 import { reconcileDocument, type Repair } from '@shared/model/reconcile'
 import { LibraryCatalog } from '@shared/parts/catalog'
 import { listParts } from '../main/partsLibrary'
 import { renameWithRetry } from '../main/renameRetry'
+import type { LibraryContext } from './libraryContext'
+import { repairsOnReload } from './repairs'
+
+export type { LibraryContext } from './libraryContext'
 
 /** Parse + reconcile, exactly as the editor's `loadFromText` does (copied, not imported). */
 export async function loadHarness(
@@ -19,7 +23,7 @@ export async function loadHarness(
 /** Refuses a document the editor would have to repair on open; writes atomically. */
 export async function saveHarness(path: string, doc: HarnessDocument): Promise<void> {
   const text = serializeDocument(doc)
-  const { repairs } = reconcileDocument(parseDocument(text))
+  const repairs = repairsOnReload(doc)
   if (repairs.length > 0) {
     throw new Error(`document would need repairs on load: ${repairs.map((r) => JSON.stringify(r)).join('; ')}`)
   }
@@ -31,15 +35,6 @@ export async function saveHarness(path: string, doc: HarnessDocument): Promise<v
     await rm(tmp, { force: true })
     throw e
   }
-}
-
-export interface LibraryContext {
-  dir: string
-  catalog: LibraryCatalog
-  /** File stems (sanitisePartNumber) that have a datasheets/<stem>.pdf. */
-  datasheets: Set<string>
-  /** Record files under `parts/` that exist but did not load (file name, error) — never dropped. */
-  errors: { file: string; error: string }[]
 }
 
 export async function openLibrary(dir: string): Promise<LibraryContext> {

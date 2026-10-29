@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { LibraryPart } from '../shared/parts/librarySchema'
+import type { McpCall, McpReply, ToolOutcome } from '../shared/mcp'
 
 export interface OpenResult {
   path: string
@@ -70,6 +71,13 @@ const api = {
 
   /** Show open dialog + read file. Resolves null if the user cancels. */
   openDocument: (): Promise<OpenResult | null> => ipcRenderer.invoke('doc:open'),
+
+  /** Read a file from File ▸ Open Recent. Main reads only a path that is on the list. */
+  openRecentDocument: (path: string): Promise<OpenResult | { error: string }> =>
+    ipcRenderer.invoke('doc:openRecent', path),
+
+  /** Put a document that was just opened or saved at the top of File ▸ Open Recent. */
+  addRecentFile: (path: string): Promise<void> => ipcRenderer.invoke('recent:add', path),
 
   /** Write `content` to a known `path`. Resolves the path written. */
   saveDocument: (path: string, content: string): Promise<string> =>
@@ -184,6 +192,33 @@ const api = {
     const listener = (_e: unknown, action: MenuAction): void => cb(action)
     ipcRenderer.on('menu:action', listener)
     return () => ipcRenderer.removeListener('menu:action', listener)
+  },
+
+  /** File ▸ Open Recent ▸ <file> was clicked. Returns an unsubscribe. */
+  onOpenRecent: (cb: (path: string) => void): (() => void) => {
+    const listener = (_e: unknown, path: string): void => cb(path)
+    ipcRenderer.on('menu:openRecent', listener)
+    return () => ipcRenderer.removeListener('menu:openRecent', listener)
+  },
+
+  /**
+   * Serve the MCP server's document tools (main → renderer request/response):
+   * main sends `mcp:call`, the handler's outcome goes back on `mcp:result` with
+   * the same id. Main refuses calls at once while no handler is registered
+   * (`mcp:ready`). Returns an unsubscribe function.
+   */
+  onMcpCall: (handler: (name: string, args: unknown) => Promise<ToolOutcome>): (() => void) => {
+    const listener = (_e: unknown, call: McpCall): void => {
+      void handler(call.name, call.args)
+        .catch((e: unknown): ToolOutcome => ({ ok: false, errors: [`internal error: ${(e as Error).message}`] }))
+        .then((outcome) => ipcRenderer.send('mcp:result', { id: call.id, outcome } satisfies McpReply))
+    }
+    ipcRenderer.on('mcp:call', listener)
+    ipcRenderer.send('mcp:ready', true)
+    return () => {
+      ipcRenderer.removeListener('mcp:call', listener)
+      ipcRenderer.send('mcp:ready', false)
+    }
   }
 }
 

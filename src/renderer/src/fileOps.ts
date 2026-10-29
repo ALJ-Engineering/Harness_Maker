@@ -110,6 +110,32 @@ export function loadFromText(content: string): { doc: HarnessDocument; load: Loa
   }
 }
 
+/**
+ * Put a file just opened or saved at the top of File ▸ Open Recent. Never
+ * blocks or fails the open/save it follows: a settings write that fails only
+ * leaves the list as it was.
+ */
+function noteRecent(path: string): void {
+  void window.api.addRecentFile(path).catch(() => {})
+}
+
+/**
+ * Make a file that main has read the open document, and note it as recent.
+ * A file that is not a harness document is reported and changes nothing.
+ */
+function loadOpened(res: { path: string; content: string }): void {
+  try {
+    // Reconcile BEFORE the document becomes store state; the repairs then
+    // surface as `repaired-on-load` notices in the DRC panel.
+    const { doc, load } = loadFromText(res.content)
+    useHarnessStore.getState().setDocument(doc, res.path, load)
+  } catch (e) {
+    window.alert(`Could not open file:\n${(e as Error).message}`)
+    return
+  }
+  noteRecent(res.path)
+}
+
 /** Basename of a path, for titles/dialogs. */
 export function baseName(path: string | null): string {
   if (!path) return 'Untitled'
@@ -129,6 +155,7 @@ function exportBase(path: string | null): string {
  */
 export function useFileOps(): {
   open: () => Promise<void>
+  openRecent: (path: string) => Promise<void>
   save: () => Promise<void>
   saveAs: () => Promise<void>
   newDoc: () => void
@@ -141,29 +168,33 @@ export function useFileOps(): {
       serializeDocument(doc),
       filePath ?? DEFAULT_NAME
     )
-    if (path) markSaved(path)
+    // `doc`, not the store's current one: an agent edit during the await is not on disk.
+    if (path) {
+      markSaved(path, doc)
+      noteRecent(path)
+    }
   }, [])
 
   const save = useCallback(async () => {
     const { doc, filePath, markSaved } = useHarnessStore.getState()
     if (!filePath) return saveAs()
     const written = await window.api.saveDocument(filePath, serializeDocument(doc))
-    markSaved(written)
+    markSaved(written, doc)
+    noteRecent(written)
   }, [saveAs])
 
   const open = useCallback(async () => {
-    const { dirty, setDocument } = useHarnessStore.getState()
-    if (dirty && !window.confirm('Discard unsaved changes?')) return
+    if (useHarnessStore.getState().dirty && !window.confirm('Discard unsaved changes?')) return
     const res = await window.api.openDocument()
-    if (!res) return
-    try {
-      // Reconcile BEFORE the document becomes store state; the repairs then
-      // surface as `repaired-on-load` notices in the DRC panel.
-      const { doc, load } = loadFromText(res.content)
-      setDocument(doc, res.path, load)
-    } catch (e) {
-      window.alert(`Could not open file:\n${(e as Error).message}`)
-    }
+    if (res) loadOpened(res)
+  }, [])
+
+  // File ▸ Open Recent ▸ <path>: Open without the dialog.
+  const openRecent = useCallback(async (path: string) => {
+    if (useHarnessStore.getState().dirty && !window.confirm('Discard unsaved changes?')) return
+    const res = await window.api.openRecentDocument(path)
+    if ('error' in res) window.alert(`Could not open file:\n${res.error}`)
+    else loadOpened(res)
   }, [])
 
   const newDoc = useCallback(() => {
@@ -227,5 +258,5 @@ export function useFileOps(): {
     if (written) window.alert(`Exported:\n${written.join('\n')}`)
   }, [])
 
-  return { open, save, saveAs, newDoc, exportPdf, exportBom }
+  return { open, openRecent, save, saveAs, newDoc, exportPdf, exportBom }
 }

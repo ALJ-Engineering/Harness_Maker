@@ -40,6 +40,6 @@ describe('libraryPut rollback failure', () => {
     const r = await libraryPut(lib, rec, { datasheet: pdf })
     expect(r.ok).toBe(false)
     expect(r.problems[0]).toBe('PIN-1: missing manufacturer')
-    expect(r.problems[1]).toMatch(/^ROLLBACK FAILED: EPERM: simulated — check .*PIN-1\.json and its datasheet by hand$/)
+    expect(r.problems[1]).toMatch(/^ROLLBACK FAILED: EPERM: simulated — check .*PIN-1\.json, its datasheet and its picture by hand$/)
   })
 })

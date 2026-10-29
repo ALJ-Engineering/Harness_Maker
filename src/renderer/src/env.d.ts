@@ -54,6 +54,8 @@ interface LibraryListingDto {
 interface PreloadApi {
   platform: string
   openDocument: () => Promise<OpenResult | null>
+  openRecentDocument: (path: string) => Promise<OpenResult | { error: string }>
+  addRecentFile: (path: string) => Promise<void>
   saveDocument: (path: string, content: string) => Promise<string>
   saveDocumentAs: (content: string, defaultPath?: string) => Promise<string | null>
   exportFiles: (
@@ -89,6 +91,10 @@ interface PreloadApi {
   onLibraryChanged: (cb: () => void) => () => void
   onSettingsChanged: (cb: () => void) => () => void
   onMenuAction: (cb: (action: MenuAction) => void) => () => void
+  onOpenRecent: (cb: (path: string) => void) => () => void
+  onMcpCall: (
+    handler: (name: string, args: unknown) => Promise<import('@shared/mcp').ToolOutcome>
+  ) => () => void
   getTheme: () => Promise<'dark' | 'light'>
   setTheme: (theme: 'dark' | 'light') => Promise<void>
 }

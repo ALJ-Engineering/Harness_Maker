@@ -12,7 +12,8 @@ const mk = (env: Record<string, string | undefined> = {}, platform: NodeJS.Platf
   env,
   home,
   platform,
-  readStdin: async () => ''
+  readStdin: async () => '',
+  stdinLines: async function* () {}
 })
 const settingsAt = (...rel: string[]): void => {
   const dir = join(home, ...rel.slice(0, -1))

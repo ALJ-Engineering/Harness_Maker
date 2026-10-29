@@ -20,6 +20,8 @@ import { DrcPanel } from '../panel/DrcPanel'
 import { ExportDialog, type ExportSummary } from '../ExportDialog'
 import { LibraryDialog, type LibraryDlgState } from '../LibraryDialog'
 import { useTheme } from '../useTheme'
+import { runTool } from '../mcp/tools'
+import { listLibrary } from '../mcp/library'
 import { TopChrome } from './chrome/TopChrome'
 import { BottomBar } from './chrome/BottomBar'
 
@@ -117,7 +119,7 @@ export function AppShell(): React.JSX.Element {
   const setSplit = useHarnessStore((s) => s.setSplit)
   const refreshPartRefs = useHarnessStore((s) => s.refreshPartRefs)
 
-  const { open, save, saveAs, newDoc, exportPdf, exportBom } = useFileOps()
+  const { open, openRecent, save, saveAs, newDoc, exportPdf, exportBom } = useFileOps()
 
   // The UI theme. It reaches the CANVAS only by being threaded into the pane's
   // projection (see `HarnessPane`'s `flow` memo): React Flow repaints an edge on
@@ -375,6 +377,9 @@ export function AppShell(): React.JSX.Element {
     })
   }, [open, save, saveAs, newDoc, undo, redo, exportBom, library.catalog, refreshPartRefs])
 
+  // File ▸ Open Recent ▸ <file>.
+  useEffect(() => window.api.onOpenRecent((path) => void openRecent(path)), [openRecent])
+
   // Keep the window title in sync with file name + dirty state.
   useEffect(() => {
     document.title = `${dirty ? '• ' : ''}${baseName(filePath)} — Harness Editor`
@@ -425,6 +430,30 @@ export function AppShell(): React.JSX.Element {
       setTreatmentSel(null)
     },
     [jumpTarget]
+  )
+
+  // The MCP server's document tools (`mcp/tools.ts`): main forwards an agent's
+  // call here. Registered once; what it needs from the shell changes with the
+  // panes, so it reads that through a ref. The library is listed fresh per call:
+  // a part an agent has just added with `library_put` must resolve without
+  // waiting for `usePartsLibrary`'s re-list.
+  const mcpRef = useRef({ addDropPos, jumpTarget, handleDrcSelect })
+  mcpRef.current = { addDropPos, jumpTarget, handleDrcSelect }
+  useEffect(
+    () =>
+      window.api.onMcpCall((name, args) =>
+        runTool(name, args, {
+          library: listLibrary,
+          placeAt: () => mcpRef.current.addDropPos(),
+          select: (ref) => {
+            if (!mcpRef.current.jumpTarget(ref)) return false
+            mcpRef.current.handleDrcSelect(ref)
+            return true
+          },
+          save: (path, text) => window.api.saveDocument(path, text)
+        })
+      ),
+    []
   )
 
   return (
